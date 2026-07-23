@@ -12,7 +12,7 @@ materially more validation data to avoid overfitting the calibration curve itsel
 `method="auto"` only switches to it once the validation sample clears a size threshold.
 """
 
-from typing import List, Literal, Protocol
+from typing import Any, Dict, List, Literal, Protocol, Tuple
 
 from packages.prediction.calibration import (
     brier_score,
@@ -47,7 +47,7 @@ class PlattScaler:
 
 
 class IsotonicScaler:
-    def __init__(self, model) -> None:  # noqa: ANN001 - sklearn IsotonicRegression, training-time only
+    def __init__(self, model: Any) -> None:  # sklearn IsotonicRegression, training-time only
         self._model = model
 
     def calibrate(self, raw_probability: float) -> float:
@@ -87,7 +87,7 @@ def fit_calibration(
     raw_probabilities: List[float],
     outcomes: List[int],
     method: Literal["auto", "platt", "isotonic"] = "auto",
-) -> tuple:
+) -> Tuple[ProbabilityScaler, str]:
     """Returns (scaler, method_used). Fits ONLY on the data passed in -- callers are
     responsible for passing validation-split data, never test-split data (see
     packages.research.evaluation.run_walk_forward_evaluation for where this is enforced)."""
@@ -119,5 +119,15 @@ def build_calibration_report(
         log_loss=log_loss(calibrated, outcomes),
         expected_calibration_error=ece,
         calibration_score=calibration_score_from_ece(ece),
-        reliability_buckets=[dict(b) for b in buckets],
+        reliability_buckets=[_bucket_to_dict(b) for b in buckets],
     )
+
+
+def _bucket_to_dict(bucket: Any) -> Dict[str, float]:
+    return {
+        "bucket_lower": bucket["bucket_lower"],
+        "bucket_upper": bucket["bucket_upper"],
+        "count": bucket["count"],
+        "mean_predicted": bucket["mean_predicted"],
+        "empirical_frequency": bucket["empirical_frequency"],
+    }

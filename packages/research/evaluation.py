@@ -17,7 +17,7 @@ backtest drawdown like packages.backtest.metrics computes for equity-curve backt
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -108,7 +108,7 @@ def compute_classification_metrics(
     y_prob = rows[probability_column].astype(float).to_numpy()
     y_pred = (y_prob >= threshold).astype(int)
 
-    metrics_kwargs = {}
+    metrics_kwargs: Dict[str, Optional[float]] = {}
     if len(set(y_true.tolist())) >= 2:
         metrics_kwargs["precision"] = float(precision_score(y_true, y_pred, zero_division=0))
         metrics_kwargs["recall"] = float(recall_score(y_true, y_pred, zero_division=0))
@@ -139,7 +139,7 @@ def evaluate_subject_on_split(
     probability_column: Optional[str] = None,
     probability_threshold: float = 0.5,
     probability_buckets: int = 10,
-) -> tuple:
+) -> Tuple[EvaluationMetrics, List[EvaluationBreakdown]]:
     """Returns (aggregate_metrics, breakdowns) for one subject (model or baseline) on one
     split ("train" | "validation" | "test") of an already `split`-labeled table.
     """

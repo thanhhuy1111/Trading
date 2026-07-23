@@ -35,9 +35,9 @@ AND low <= lower), the LOWER barrier is assumed hit first (conservative: a strat
 know intrabar path from OHLC alone, and assuming the favorable outcome would bias results).
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -54,7 +54,7 @@ def _first_barrier_hit(
     lower_barrier: Decimal,
     time_barrier: "pd.Timestamp",
     forward_candles: List[Candle],
-) -> tuple:
+) -> Tuple[Optional[str], Optional[Decimal], Optional[datetime]]:
     """Returns (first_barrier_hit, exit_price, label_end_time)."""
     for c in forward_candles:
         if c.close_time > time_barrier:
@@ -83,7 +83,7 @@ def build_label_table(
     close to the end of the available candle history to reach their horizon are skipped
     entirely (never partially labeled).
     """
-    groups: Dict[tuple, List[Candle]] = {}
+    groups: Dict[Tuple[str, str], List[Candle]] = {}
     for c in candles:
         tf_value = c.timeframe.value if hasattr(c.timeframe, "value") else str(c.timeframe)
         groups.setdefault((c.symbol, tf_value), []).append(c)
@@ -117,6 +117,10 @@ def build_label_table(
                 )
                 if first_hit is None:
                     continue
+                # _first_barrier_hit only returns a non-None first_hit alongside a
+                # non-None exit_price (every branch sets both together) -- narrow the
+                # type for the type checker, and as a runtime invariant check.
+                assert exit_price is not None
 
                 gross_return_bps = (exit_price - entry_reference_price) / entry_reference_price * BPS
                 net_return_bps = gross_return_bps - cost_bps

@@ -19,7 +19,7 @@ Approval status is decided in two layers, in order, and NEVER loosened to force 
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from packages.recommendation.config import recommendation_config
 from packages.recommendation.evidence_service import EvidenceRegistry, evaluate_approval, evidence_registry
@@ -99,7 +99,7 @@ def evaluate_research_approval(
     evaluation: EvaluationReport,
     research_approval_config: ApprovalGateConfig,
     now: Optional[datetime] = None,
-) -> tuple:
+) -> Tuple[EvidenceStatus, List[str]]:
     """Returns (status, reason_codes). Layer 1 (existing policy) can produce any status;
     layer 2 (below) can only downgrade an APPROVED result, never upgrade any other.
     """

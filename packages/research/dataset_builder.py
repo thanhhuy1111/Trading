@@ -8,7 +8,7 @@ forward-fill would let a stale price masquerade as a fresh observation), not an 
 """
 
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from packages.market_data.guardian import data_guardian
 from packages.market_data.models import Candle, Timeframe
@@ -69,7 +69,7 @@ def build_raw_candle_dataset(
         )
 
     # 2. Deduplicate by (symbol, timeframe, open_time), keep first occurrence.
-    seen: set = set()
+    seen: Set[Tuple[str, str, datetime]] = set()
     deduped: List[Candle] = []
     duplicate_count = 0
     for c in sorted(kept, key=lambda c: c.open_time):
@@ -88,7 +88,7 @@ def build_raw_candle_dataset(
 
     # 4. Gap detection per (symbol, timeframe) group -- informational, never forward-filled.
     gap_count = 0
-    groups: dict = {}
+    groups: Dict[Tuple[str, str], List[Candle]] = {}
     for c in sorted_candles:
         tf_value = c.timeframe.value if hasattr(c.timeframe, "value") else str(c.timeframe)
         groups.setdefault((c.symbol, tf_value), []).append(c)

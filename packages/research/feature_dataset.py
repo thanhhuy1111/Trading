@@ -15,7 +15,7 @@ Point-in-time guarantee (belt and suspenders, two independent layers):
 tests/unit/test_research_features_labels.py are the leakage tests for this module.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
@@ -25,8 +25,8 @@ from packages.market_data.models import Candle, Timeframe
 from packages.research.config import FeatureConfig
 
 
-def _group_by_symbol_timeframe(candles: List[Candle]) -> Dict[tuple, List[Candle]]:
-    groups: Dict[tuple, List[Candle]] = {}
+def _group_by_symbol_timeframe(candles: List[Candle]) -> Dict[Tuple[str, str], List[Candle]]:
+    groups: Dict[Tuple[str, str], List[Candle]] = {}
     for c in candles:
         tf_value = c.timeframe.value if hasattr(c.timeframe, "value") else str(c.timeframe)
         groups.setdefault((c.symbol, tf_value), []).append(c)

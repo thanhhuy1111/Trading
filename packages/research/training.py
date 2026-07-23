@@ -18,9 +18,12 @@ merely to inspect this module.
 """
 
 from datetime import datetime, timezone
-from typing import List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    import numpy as np
 
 from packages.prediction.direction_model import LogisticRegressionWeights
 from packages.prediction.return_model import LinearRegressionWeights
@@ -51,7 +54,7 @@ def prepare_training_matrix(
     return merged
 
 
-def _feature_matrix(merged: pd.DataFrame, feature_names: List[str]):
+def _feature_matrix(merged: pd.DataFrame, feature_names: List[str]) -> "np.ndarray":
     return merged[[f"feature__{name}" for name in feature_names]].to_numpy()
 
 
@@ -59,7 +62,7 @@ def train_logistic_direction_weights(
     merged_train: pd.DataFrame,
     feature_names: List[str],
     model_version: str,
-    hyperparameters: dict,
+    hyperparameters: Dict[str, Any],
     random_seed: int,
 ) -> LogisticRegressionWeights:
     from sklearn.linear_model import LogisticRegression

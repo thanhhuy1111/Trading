@@ -21,13 +21,13 @@ anywhere else in this repository to be consistent with.
 import argparse
 import asyncio
 import sys
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import pandas as pd
 
 from packages.common.logger import logger
 from packages.market_data.adapters.factory import MarketDataProviderFactory
-from packages.market_data.models import Timeframe
+from packages.market_data.models import Candle, Timeframe
 from packages.recommendation.service import PIPELINE_STRATEGY_NAME, PIPELINE_STRATEGY_VERSION
 from packages.research.artifacts import artifact_store
 from packages.research.baselines import BASELINE_NAMES, attach_baseline_decisions
@@ -51,7 +51,9 @@ from packages.research.training import (
 )
 
 
-def _apply_model_predictions(table: pd.DataFrame, model, feature_names: List[str], threshold: float) -> pd.DataFrame:
+def _apply_model_predictions(
+    table: pd.DataFrame, model: Any, feature_names: List[str], threshold: float
+) -> pd.DataFrame:
     """Adds `model_probability` (probability_up) and `model_decision` (probability_up >=
     threshold) columns to a COPY of `table`. Pure function of the already-trained model's
     coefficients and the table's own feature columns -- no lookahead, since the feature
@@ -63,9 +65,9 @@ def _apply_model_predictions(table: pd.DataFrame, model, feature_names: List[str
         out["model_decision"] = pd.Series(dtype="bool")
         return out
 
-    def _predict(row) -> float:
+    def _predict(row: "pd.Series[Any]") -> float:
         features = {name: float(row[f"feature__{name}"]) for name in feature_names}
-        return model.predict_proba(features).probability_up
+        return float(model.predict_proba(features).probability_up)
 
     out["model_probability"] = out.apply(_predict, axis=1)
     out["model_decision"] = out["model_probability"] >= threshold
@@ -99,9 +101,9 @@ def _cmd_download_data(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_cached_candles(config: ResearchConfig, cache_root: str) -> List:
+def _load_cached_candles(config: ResearchConfig, cache_root: str) -> List[Candle]:
     repo = CandleRepository(MarketDataProviderFactory.create_provider("binance"), cache_root=cache_root)
-    all_candles = []
+    all_candles: List[Candle] = []
     for symbol in config.dataset.symbols:
         for tf_str in config.dataset.timeframes:
             timeframe = Timeframe(tf_str)

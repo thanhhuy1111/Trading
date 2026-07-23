@@ -20,7 +20,8 @@ baseline decision here is evaluated through the SAME cost-aware label table
 
 import asyncio
 from datetime import datetime
-from typing import Dict, List
+from decimal import Decimal
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -51,7 +52,7 @@ def _build_context_and_regime(
     symbol: str,
     timeframe: Timeframe,
     as_of_time: datetime,
-    reference_price,
+    reference_price: Decimal,
 ) -> AgentEvaluationContext:
     request = FeatureComputationRequest(
         exchange=exchange, symbol=symbol, timeframe=timeframe, feature_set="standard_v1", as_of_time=as_of_time
@@ -70,9 +71,9 @@ def _build_context_and_regime(
     )
 
 
-async def _single_agent_long_decision(agent, ctx: AgentEvaluationContext) -> bool:
+async def _single_agent_long_decision(agent: Any, ctx: AgentEvaluationContext) -> bool:
     signal = await agent.evaluate(ctx)
-    return signal.action == SignalAction.LONG
+    return bool(signal.action == SignalAction.LONG)
 
 
 async def _multi_agent_long_decision(
@@ -81,7 +82,7 @@ async def _multi_agent_long_decision(
     symbol: str,
     timeframe: Timeframe,
     as_of_time: datetime,
-    reference_price,
+    reference_price: Decimal,
 ) -> bool:
     result = await decision_service.decide(
         exchange=exchange, symbol=symbol, timeframe=timeframe,
