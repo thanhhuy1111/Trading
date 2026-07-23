@@ -21,7 +21,7 @@ import json
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -80,7 +80,7 @@ async def dry_run_one(symbol: str, timeframe: Timeframe) -> DryRunResult:
     validity_by_ts = {v.decision_timestamp: v for v in validity}
 
     result = DryRunResult(symbol=symbol, timeframe=timeframe.value, total_clean_candles=len(clean))
-    regime_counter: Counter = Counter()
+    regime_counter: Counter[str] = Counter()
     seen_candidate_keys = set()
 
     for idx, candle in enumerate(clean):
@@ -164,7 +164,7 @@ async def dry_run_one(symbol: str, timeframe: Timeframe) -> DryRunResult:
     return result
 
 
-def _interval(timeframe: Timeframe):
+def _interval(timeframe: Timeframe) -> timedelta:
     from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
     return TIMEFRAME_INTERVAL[timeframe]
 
