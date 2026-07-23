@@ -5,7 +5,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import AsyncIterator, List, Sequence
+from typing import AsyncIterator, Dict, List, Sequence
 
 from packages.common.logger import logger
 from packages.market_data.models import (
@@ -122,6 +122,33 @@ class BinancePublicMarketDataProvider:
             return candles
         except Exception as e:
             logger.error("Binance public fetch_candles error", extra={"symbol": symbol, "error": str(e)})
+            raise e
+
+    async def fetch_current_prices(self, symbols: Sequence[str]) -> Dict[str, Decimal]:
+        """Fetches the latest traded price for each symbol from Binance's public REST API
+        (GET /api/v3/ticker/price). Public endpoint only, no API key."""
+        exch_symbols = [symbol_registry.to_exchange_symbol(s) for s in symbols]
+        symbols_param = urllib.parse.quote(json.dumps(exch_symbols, separators=(",", ":")))
+        url = f"{self.REST_BASE_URL}/api/v3/ticker/price?symbols={symbols_param}"
+
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "TradingBot/1.0"})
+            loop = asyncio.get_running_loop()
+            resp_data = await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(req, timeout=10.0, context=_get_ssl_context()).read()
+            )
+            raw = json.loads(resp_data.decode("utf-8"))
+
+            exch_to_canonical = dict(zip(exch_symbols, symbols, strict=True))
+            prices: Dict[str, Decimal] = {}
+            for item in raw:
+                canonical = exch_to_canonical.get(item["symbol"])
+                if canonical:
+                    prices[canonical] = Decimal(str(item["price"]))
+            return prices
+        except Exception as e:
+            logger.error("Binance public fetch_current_prices error", extra={"symbols": list(symbols), "error": str(e)})
             raise e
 
     async def fetch_order_book_snapshot(

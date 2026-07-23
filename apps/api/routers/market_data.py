@@ -6,10 +6,13 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
 from packages.market_data.models import Timeframe
 from packages.market_data.symbol_registry import symbol_registry
 
 router = APIRouter(prefix="/market-data", tags=["Market Data Platform"])
+
+_binance_provider = BinancePublicMarketDataProvider()
 
 ingestion_jobs_mock: List[Dict[str, Any]] = []
 
@@ -44,6 +47,22 @@ async def list_symbols() -> List[Dict[str, Any]]:
         if info:
             res.append(info.model_dump(mode="json"))
     return res
+
+
+@router.get("/live-prices")
+async def get_live_prices(symbols: str = Query("BTC/USDT,ETH/USDT")) -> Dict[str, Any]:
+    """Real current prices from Binance's public REST API (GET /api/v3/ticker/price).
+    Public endpoint only — no API key, no private data."""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    try:
+        prices = await _binance_provider.fetch_current_prices(symbol_list)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"BINANCE_PUBLIC_API_UNAVAILABLE: {exc}") from exc
+    return {
+        "source": "binance_public_rest",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "prices": {sym: str(price) for sym, price in prices.items()},
+    }
 
 
 @router.get("/candles")
