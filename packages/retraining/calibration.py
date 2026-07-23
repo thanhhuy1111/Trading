@@ -17,7 +17,7 @@ exactly the kind of defect this module's own test suite must catch.
 from typing import Dict, List, Optional
 
 
-def fit_platt_scaling(raw_probabilities: List[float], outcomes: List[int]) -> Optional[Dict[str, float]]:
+def fit_platt_scaling(raw_probabilities: List[float], outcomes: List[int]) -> Optional[Dict[str, object]]:
     """Returns `{"method": "platt", "a": float, "b": float}` ready to store directly in a
     `LogisticRegressionMetaLabelService` artifact's `calibration` field, or None if there
     isn't enough signal to fit (fewer than 2 outcome classes present) -- never a fabricated
