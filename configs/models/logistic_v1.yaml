@@ -1,0 +1,9 @@
+# Standalone ModelConfig -- loadable via packages.research.config.load_model_config()
+# for a train-model invocation that wants to override just the model section of a
+# ResearchConfig without editing the dataset config.
+model_type: "logistic_regression"
+model_version: "logreg_v1"
+hyperparameters:
+  C: 1.0
+  max_iter: 1000
+random_seed: 42

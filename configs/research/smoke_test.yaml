@@ -1,0 +1,44 @@
+# Small, bounded config for a smoke-scale CLI dry run (see docs/ALPHA_RESEARCH_RUNBOOK.md).
+# Explicitly NOT sufficient sample size for evidence approval -- used only to prove the
+# pipeline wiring actually runs end to end against real data.
+name: smoke_test
+
+dataset:
+  version: "1.0.0"
+  symbols: ["BTCUSDT"]
+  timeframes: ["1h"]
+  start_time: "2026-06-01T00:00:00+00:00"
+  end_time: "2026-07-20T00:00:00+00:00"
+  source: "binance_public"
+  source_version: "1.0.0"
+  warmup_periods: 60
+
+features:
+  version: "standard_v1"
+  lookback_window: 300
+  warmup_periods: 60
+
+labels:
+  version: "triple_barrier_v1"
+  horizons_minutes: [60]
+  upper_barrier_pct: "0.02"
+  lower_barrier_pct: "0.02"
+  use_cost_estimator: true
+
+splits:
+  method: "walk_forward"
+  num_folds: 2
+  purge_hours: 24
+  embargo_hours: 24
+
+model:
+  model_type: "logistic_regression"
+  model_version: "logreg_smoke_v1"
+  hyperparameters:
+    C: 1.0
+    max_iter: 1000
+  random_seed: 42
+
+approval:
+  min_oos_trades: 100
+  min_walk_forward_windows: 3

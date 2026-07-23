@@ -170,7 +170,7 @@ class CandleRepository:
             "research_candle_download_complete",
             extra={
                 "symbol": symbol,
-                "timeframe": str(timeframe),
+                "timeframe": timeframe.value if hasattr(timeframe, "value") else str(timeframe),
                 "new_candles": len(new_candles),
                 "cache_rows": len(combined),
             },

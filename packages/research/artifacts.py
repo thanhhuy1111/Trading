@@ -62,8 +62,11 @@ class ArtifactStore:
         return model_cls.model_validate_json(path.read_text(encoding="utf-8"))
 
     def list_ids(self, category: str) -> List[str]:
+        # Excludes "*.weights.json" (packages/research/runtime_loader.py-style model
+        # weight files) so "models" ids are the real ModelArtifactRecord ids, not the
+        # {model_id}_direction / {model_id}_return weight artifacts stored alongside them.
         d = self._category_dir(category)
-        return sorted(p.stem for p in d.glob("*.json"))
+        return sorted(p.stem for p in d.glob("*.json") if not p.name.endswith(".weights.json"))
 
     # ---- tabular data (parquet) --------------------------------------------------
 

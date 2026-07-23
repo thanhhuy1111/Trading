@@ -1,0 +1,65 @@
+# Alpha research pipeline config -- Version 1 scope.
+# Loaded by packages.research.config.load_research_config(); every field here
+# contributes to ResearchConfig.config_hash, recorded on every dataset/model/evaluation/
+# evidence artifact this config produces.
+name: btc_eth_v1
+
+dataset:
+  version: "1.0.0"
+  symbols: ["BTCUSDT", "ETHUSDT"]
+  timeframes: ["15m", "1h", "4h"]
+  # Placeholder range -- override for an actual run. Keep the span honest: a wide range
+  # here does not mean a wide range was actually downloaded/evaluated (see the
+  # implementation report's Data section for what was really pulled).
+  start_time: "2024-01-01T00:00:00+00:00"
+  end_time: "2026-01-01T00:00:00+00:00"
+  source: "binance_public"
+  source_version: "1.0.0"
+  warmup_periods: 60
+
+features:
+  version: "standard_v1"
+  missing_value_policy: "ZERO_FILL_NO_FORWARD_FILL"
+  lookback_window: 300
+  warmup_periods: 60
+
+labels:
+  version: "triple_barrier_v1"
+  horizons_minutes: [60, 240, 720]
+  upper_barrier_pct: "0.02"
+  lower_barrier_pct: "0.02"
+  use_cost_estimator: true
+
+splits:
+  method: "walk_forward"
+  train_fraction: "0.6"
+  validation_fraction: "0.2"
+  test_fraction: "0.2"
+  num_folds: 3
+  purge_hours: 24
+  embargo_hours: 24
+
+model:
+  model_type: "logistic_regression"
+  model_version: "logreg_v1"
+  hyperparameters:
+    C: 1.0
+    max_iter: 1000
+  random_seed: 42
+
+calibration:
+  method: "platt"
+  n_bins: 10
+
+evaluation:
+  probability_buckets: 10
+
+approval:
+  min_oos_expectancy_bps: "0.0"
+  min_profit_factor: "1.20"
+  min_sharpe: "1.00"
+  max_drawdown_pct: "20.0"
+  min_oos_trades: 100
+  min_walk_forward_windows: 3
+  max_single_window_profit_share: "0.60"
+  min_calibration_score: "0.50"
