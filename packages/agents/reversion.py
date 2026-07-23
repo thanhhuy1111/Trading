@@ -8,6 +8,9 @@ from packages.agents.models import (
     SignalAction,
     StrategyType,
 )
+from packages.agents.pricing import expected_return_bps as _expected_return_bps
+from packages.agents.pricing import price_levels as _price_levels
+from packages.agents.strategy_config import default_strategy_config
 
 
 class MeanReversionAgent:
@@ -38,12 +41,13 @@ class MeanReversionAgent:
         vals = context.feature_snapshot.values
         regime = context.market_regime
 
+        cfg = context.strategy_config or default_strategy_config
         rsi = vals.get("rsi_14")
         zscore = vals.get("zscore_20")
 
         reasons = []
         action = SignalAction.NO_SIGNAL
-        confidence = Decimal("0.50")
+        confidence = cfg.neutral_confidence
 
         if regime not in [MarketRegime.SIDEWAYS, MarketRegime.LOW_VOLATILITY]:
             reasons.append("REGIME_NOT_SUPPORTED")
@@ -52,19 +56,25 @@ class MeanReversionAgent:
                 rsi_dec = Decimal(str(rsi))
                 z_dec = Decimal(str(zscore))
 
-                if rsi_dec < Decimal("30.0") or z_dec < Decimal("-1.8"):
+                if rsi_dec < cfg.reversion_rsi_oversold or z_dec < -cfg.reversion_zscore_threshold:
                     action = SignalAction.LONG
-                    confidence = Decimal("0.70")
+                    confidence = cfg.reversion_confidence
                     reasons.append("OVERSOLD_CONDITION")
-                elif rsi_dec > Decimal("70.0") or z_dec > Decimal("1.8"):
+                elif rsi_dec > cfg.reversion_rsi_overbought or z_dec > cfg.reversion_zscore_threshold:
                     action = SignalAction.SHORT
-                    confidence = Decimal("0.70")
+                    confidence = cfg.reversion_confidence
                     reasons.append("OVERBOUGHT_CONDITION")
                 else:
                     reasons.append("INSIDE_NEUTRAL_ZONE")
 
-        ref_price = Decimal("65000.00")
+        ref = context.reference_price if (context.reference_price and context.reference_price > 0) else None
         is_long = (action == SignalAction.LONG)
+        levels = _price_levels(
+            ref, is_long, cfg.reversion_stop_pct, cfg.reversion_take_profit_pct, cfg.reversion_invalidation_pct
+        )
+        expected = _expected_return_bps(ref, action, levels["take_profit"], confidence)
+        if expected is None and action in (SignalAction.LONG, SignalAction.SHORT):
+            reasons.append("EXPECTED_RETURN_UNAVAILABLE")
 
         return AgentSignal(
             agent_id=self.agent_id,
@@ -76,11 +86,12 @@ class MeanReversionAgent:
             timeframe=context.timeframe,
             action=action,
             confidence=confidence,
+            expected_return_bps=expected,
             horizon_minutes=30,
-            reference_price=ref_price,
-            invalidation_price=ref_price * Decimal("0.985") if is_long else ref_price * Decimal("1.015"),
-            suggested_stop_price=ref_price * Decimal("0.980") if is_long else ref_price * Decimal("1.020"),
-            suggested_take_profit_price=ref_price * Decimal("1.020") if is_long else ref_price * Decimal("0.980"),
+            reference_price=levels["reference"],
+            invalidation_price=levels["invalidation"],
+            suggested_stop_price=levels["stop"],
+            suggested_take_profit_price=levels["take_profit"],
             market_regime=regime,
             feature_snapshot_id=context.feature_snapshot.snapshot_id,
             feature_set_version=context.feature_snapshot.feature_set_version,

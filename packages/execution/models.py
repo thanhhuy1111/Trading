@@ -74,6 +74,11 @@ class ExchangeOrderRequest(BaseModel):
     remaining_approved_quantity: Decimal = Field(gt=Decimal("0.0"))
     remaining_maximum_notional: Decimal = Field(gt=Decimal("0.0"))
 
+    # Current market reference price (e.g. candle close / best quote). Slippage is
+    # modelled relative to this, NOT relative to the limit price. When absent the
+    # adapter falls back to the limit price.
+    reference_price: Optional[Decimal] = None
+
     submitted_at: datetime
     expires_at: datetime
 

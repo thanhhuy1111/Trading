@@ -53,9 +53,23 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
         exchange_order_id = uuid4()
         now = datetime.now(timezone.utc)
 
-        # 2. Realistic Fill Pricing (Slippage + Fee)
-        slippage_factor = Decimal("1.0005") if request.side == "BUY" else Decimal("0.9995")
-        fill_price = request.limit_price * slippage_factor
+        # 2. Realistic Fill Pricing (slippage modelled vs. market reference, then capped)
+        slippage_bps = Decimal("5.0")
+        slippage = slippage_bps / Decimal("10000.0")
+        base = (
+            request.reference_price
+            if (request.reference_price and request.reference_price > Decimal("0"))
+            else request.limit_price
+        )
+        if request.side == "BUY":
+            raw_fill_price = base * (Decimal("1.0") + slippage)
+            # HARD CAP (F-09): a BUY fill can never exceed the risk-approved limit / max entry price.
+            fill_price = min(raw_fill_price, request.limit_price, request.maximum_entry_price)
+        else:
+            # SELL limit semantics: never fill below the minimum acceptable (limit) price.
+            raw_fill_price = base * (Decimal("1.0") - slippage)
+            fill_price = max(raw_fill_price, request.limit_price)
+
         fill_qty = request.quantity
         quote_qty = fill_qty * fill_price
         fee = quote_qty * Decimal("0.0010") # 10 bps fee

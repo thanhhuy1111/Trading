@@ -78,6 +78,8 @@ class AgentSignal(BaseModel):
 
 
 class AgentEvaluationContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     exchange: str
     symbol: str
     timeframe: Timeframe
@@ -86,3 +88,8 @@ class AgentEvaluationContext(BaseModel):
     market_regime: MarketRegime
     data_quality_status: str
     agent_config: Dict[str, Any] = Field(default_factory=dict)
+    # Current market reference price (candle close at as_of_time). When absent,
+    # agents emit no price-derived levels and no expected return (fail-safe).
+    reference_price: Optional[Decimal] = None
+    # Versioned strategy configuration; falls back to default when not supplied.
+    strategy_config: Optional[Any] = None

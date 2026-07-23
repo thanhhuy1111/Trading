@@ -98,7 +98,8 @@ class SignalConsensusEngine:
         # Weighted expected return calculation
         expected_returns = []
         for d, s in accepted:
-            ret_bps = s.expected_return_bps if s.expected_return_bps is not None else Decimal("50.0")
+            # HONEST DEFAULT: missing expected return contributes 0 bps (no fabricated edge).
+            ret_bps = s.expected_return_bps if s.expected_return_bps is not None else Decimal("0.0")
             expected_returns.append(ret_bps * d.adjusted_confidence)
 
         weighted_ret = (

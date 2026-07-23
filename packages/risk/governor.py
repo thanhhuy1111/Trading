@@ -30,6 +30,9 @@ class DeterministicRiskGovernor:
         current_time: Optional[datetime] = None
     ) -> Tuple[RiskDecision, Optional[ApprovedOrder]]:
         eval_time = current_time or datetime.now(timezone.utc)
+        # F-13: never compare datetimes against a possibly-None current_time. From here on
+        # use the resolved evaluation time everywhere (behaviour unchanged when a time is passed).
+        current_time = eval_time
 
         checks: List[RiskCheckResult] = []
         warning_codes: List[str] = []

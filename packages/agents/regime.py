@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from packages.agents.models import AgentEvaluationContext, MarketRegime
+from packages.agents.strategy_config import default_strategy_config
 
 
 class MarketRegimeAgent:
@@ -24,6 +25,7 @@ class MarketRegimeAgent:
 
     def classify_regime(self, context: AgentEvaluationContext) -> MarketRegime:
         vals = context.feature_snapshot.values
+        cfg = context.strategy_config or default_strategy_config
 
         adx = vals.get("adx_14")
         ema_slope = vals.get("ema_20_slope")
@@ -36,13 +38,13 @@ class MarketRegimeAgent:
         slope_dec = Decimal(str(ema_slope))
         vol_dec = Decimal(str(vol)) if vol is not None else Decimal("0")
 
-        if vol_dec > Decimal("0.05"):
+        if vol_dec > cfg.regime_high_vol_threshold:
             return MarketRegime.HIGH_VOLATILITY
 
-        if adx_dec >= Decimal("25.0"):
-            if slope_dec > Decimal("0.001"):
+        if adx_dec >= cfg.regime_adx_trend_threshold:
+            if slope_dec > cfg.regime_slope_up_threshold:
                 return MarketRegime.TREND_UP
-            elif slope_dec < Decimal("-0.001"):
+            elif slope_dec < cfg.regime_slope_down_threshold:
                 return MarketRegime.TREND_DOWN
 
         return MarketRegime.SIDEWAYS

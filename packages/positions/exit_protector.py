@@ -23,11 +23,16 @@ class ExitProtector:
         self,
         position: Position,
         current_market_price: Decimal,
-        current_time: Optional[datetime] = None
+        current_time: Optional[datetime] = None,
+        owner_position_manager: Optional[object] = None
     ) -> Tuple[Optional[PositionExitIntent], Position]:
 
         if current_time is None:
             current_time = datetime.now(timezone.utc)
+
+        # F-03: write trailing-stop state to the caller's session-scoped manager when provided,
+        # falling back to the module singleton only for legacy callers.
+        target_manager = owner_position_manager if owner_position_manager is not None else position_manager
 
         if position.status == "CLOSED" or position.available_quantity <= Decimal("0.0"):
             return None, position
@@ -48,7 +53,7 @@ class ExitProtector:
             "trailing_stop_price": new_trailing_stop,
             "current_market_price": current_market_price,
         })
-        position_manager.positions[position.symbol] = position
+        target_manager.positions[position.symbol] = position
 
         trigger_type: Optional[ExitTriggerType] = None
         trigger_price = current_market_price

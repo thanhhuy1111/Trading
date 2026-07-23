@@ -33,19 +33,20 @@ class RSICalculator:
                 name=self.name, version=self.version, value=None, is_valid=False, error_message="Insufficient lookback"
             )
 
-        gains = Decimal("0")
-        losses = Decimal("0")
+        # Wilder's RSI: seed with a simple average over the first `period` changes,
+        # then apply Wilder smoothing over all remaining changes in the history.
+        closes = [c.close_price for c in candles]
+        changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [c if c > Decimal("0") else Decimal("0") for c in changes]
+        losses = [-c if c < Decimal("0") else Decimal("0") for c in changes]
 
-        period_candles = candles[-(self.period + 1):]
-        for i in range(1, len(period_candles)):
-            change = period_candles[i].close_price - period_candles[i - 1].close_price
-            if change > 0:
-                gains += change
-            else:
-                losses += abs(change)
+        period_dec = Decimal(self.period)
+        avg_gain = sum(gains[: self.period], Decimal("0")) / period_dec
+        avg_loss = sum(losses[: self.period], Decimal("0")) / period_dec
 
-        avg_gain = gains / Decimal(self.period)
-        avg_loss = losses / Decimal(self.period)
+        for i in range(self.period, len(changes)):
+            avg_gain = (avg_gain * (period_dec - Decimal("1")) + gains[i]) / period_dec
+            avg_loss = (avg_loss * (period_dec - Decimal("1")) + losses[i]) / period_dec
 
         if avg_loss == Decimal("0"):
             rsi = Decimal("100.00")

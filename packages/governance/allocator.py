@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 from uuid import uuid4
 
 from packages.agents.models import AgentSignal, MarketRegime
+from packages.agents.strategy_config import StrategyConfig, default_strategy_config
 from packages.governance.cost_estimator import cost_estimator
 from packages.governance.models import (
     AllocationDecision,
@@ -31,7 +32,8 @@ class MetaAllocator:
         decisions: List[CriticDecision],
         signals: List[AgentSignal],
         market_regime: MarketRegime,
-        current_time: datetime
+        current_time: datetime,
+        strategy_config: StrategyConfig = default_strategy_config
     ) -> Tuple[AllocationDecision, Optional[TradeIntent]]:
 
         # Calculate costs & Net-Edge
@@ -47,66 +49,43 @@ class MetaAllocator:
         critic_decision_ids = [d.decision_id for d in decisions]
         reasons = list(consensus.reason_codes)
 
-        # Gate 1: Check Consensus Direction
+        def _no_trade(extra_reason: str) -> Tuple[AllocationDecision, None]:
+            reasons.append(extra_reason)
+            return AllocationDecision(
+                allocation_id=uuid4(),
+                symbol=symbol,
+                result=AllocationResult.NO_TRADE,
+                consensus=consensus,
+                source_signal_ids=source_signal_ids,
+                critic_decision_ids=critic_decision_ids,
+                created_trade_intent_id=None,
+                reason_codes=reasons,
+                decision_fingerprint=decision_fingerprint,
+                evaluated_at=current_time,
+                allocator_version="1.0.0",
+                policy_version="1.0.0"
+            ), None
+
+        # Gate 1: Directional consensus required
         if consensus.direction not in [ConsensusDirection.LONG, ConsensusDirection.SHORT]:
-            reasons.append("NO_DIRECTIONAL_CONSENSUS")
-            alloc_dec = AllocationDecision(
-                allocation_id=uuid4(),
-                symbol=symbol,
-                result=AllocationResult.NO_TRADE,
-                consensus=consensus,
-                source_signal_ids=source_signal_ids,
-                critic_decision_ids=critic_decision_ids,
-                created_trade_intent_id=None,
-                reason_codes=reasons,
-                decision_fingerprint=decision_fingerprint,
-                evaluated_at=current_time,
-                allocator_version="1.0.0",
-                policy_version="1.0.0"
-            )
-            return alloc_dec, None
+            return _no_trade("NO_DIRECTIONAL_CONSENSUS")
 
-        # Gate 2: Check Net Edge Threshold
-        if net_edge_bps <= Decimal("0.0"):
-            reasons.append("NET_EDGE_NOT_POSITIVE")
-            alloc_dec = AllocationDecision(
-                allocation_id=uuid4(),
-                symbol=symbol,
-                result=AllocationResult.NO_TRADE,
-                consensus=consensus,
-                source_signal_ids=source_signal_ids,
-                critic_decision_ids=critic_decision_ids,
-                created_trade_intent_id=None,
-                reason_codes=reasons,
-                decision_fingerprint=decision_fingerprint,
-                evaluated_at=current_time,
-                allocator_version="1.0.0",
-                policy_version="1.0.0"
-            )
-            return alloc_dec, None
-
-        # Gate 3: Check Spot MVP Short Restrictions
+        # Gate 2: Spot MVP forbids SHORT execution (checked BEFORE edge so the reason is unambiguous)
         if consensus.direction == ConsensusDirection.SHORT:
-            reasons.append("SPOT_SHORT_NOT_EXECUTABLE")
-            alloc_dec = AllocationDecision(
-                allocation_id=uuid4(),
-                symbol=symbol,
-                result=AllocationResult.NO_TRADE,
-                consensus=consensus,
-                source_signal_ids=source_signal_ids,
-                critic_decision_ids=critic_decision_ids,
-                created_trade_intent_id=None,
-                reason_codes=reasons,
-                decision_fingerprint=decision_fingerprint,
-                evaluated_at=current_time,
-                allocator_version="1.0.0",
-                policy_version="1.0.0"
-            )
-            return alloc_dec, None
+            return _no_trade("SPOT_SHORT_NOT_EXECUTABLE")
 
-        # All Gates Passed -> Generate TradeIntent (BUY)
+        # Gate 3: Reference price must come from a real signal, never a hardcoded constant
+        long_signals = [s for s in signals if s.reference_price and s.reference_price > Decimal("0")]
+        if not long_signals:
+            return _no_trade("REFERENCE_PRICE_UNAVAILABLE")
+        ref_price = max(s.reference_price for s in long_signals)
+
+        # Gate 4: Net edge must be strictly positive (0 bps expected return => NO_TRADE)
+        if net_edge_bps <= Decimal("0.0"):
+            return _no_trade("NET_EDGE_NOT_POSITIVE")
+
+        # All Gates Passed -> Generate TradeIntent (BUY spot long)
         intent_id = uuid4()
-        ref_price = Decimal("65000.00")
         strategy_ids = list(set(s.agent_id for s in signals))
 
         intent = TradeIntent(
@@ -128,9 +107,9 @@ class MetaAllocator:
             uncertainty_buffer_bps=cost.uncertainty_buffer_bps,
             net_edge_bps=net_edge_bps,
             reference_price=ref_price,
-            invalidation_price=ref_price * Decimal("0.98"),
-            suggested_stop_price=ref_price * Decimal("0.97"),
-            suggested_take_profit_price=ref_price * Decimal("1.05"),
+            invalidation_price=ref_price * (Decimal("1") - strategy_config.intent_invalidation_pct),
+            suggested_stop_price=ref_price * (Decimal("1") - strategy_config.intent_stop_pct),
+            suggested_take_profit_price=ref_price * (Decimal("1") + strategy_config.intent_take_profit_pct),
             horizon_minutes=60,
             maximum_entry_slippage_bps=Decimal("10.0"),
             feature_as_of_time=current_time,

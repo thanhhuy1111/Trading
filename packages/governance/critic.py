@@ -51,7 +51,13 @@ class CriticAgent:
 
         # 3. Cost & Edge Feasibility Critic
         cost = cost_estimator.estimate_cost(signal.symbol)
-        expected_bps = signal.expected_return_bps if signal.expected_return_bps is not None else Decimal("50.0")
+        # HONEST DEFAULT: a missing expected return is treated as 0 bps (never a fabricated
+        # positive edge). Downstream this yields NO_TRADE rather than inventing an opportunity.
+        if signal.expected_return_bps is None:
+            expected_bps = Decimal("0.0")
+            warning_codes.append("EXPECTED_RETURN_UNAVAILABLE")
+        else:
+            expected_bps = signal.expected_return_bps
 
         if expected_bps <= cost.total_cost_bps:
             warning_codes.append("INSUFFICIENT_EXPECTED_EDGE")
