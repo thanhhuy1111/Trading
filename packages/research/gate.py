@@ -16,6 +16,11 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import List, Optional
 
+# Bump this whenever PromotionGate's thresholds or evaluation logic change. Evidence records
+# bind to the exact gate_version that produced them (packages/evidence/models.py) — a config
+# approved under gate_v1 says nothing about whether it would clear gate_v2.
+GATE_VERSION = "gate_v1"
+
 
 @dataclass(frozen=True)
 class PromotionGate:
