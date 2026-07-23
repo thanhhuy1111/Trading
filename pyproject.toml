@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crypto-multiagent-trading"
+version = "0.1.0"
+description = "Production-grade multi-agent cryptocurrency trading platform"
+authors = [{ name = "Quant AI Team" }]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
+    "polars>=0.20.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "redis>=5.0.0",
+    "kafka-python-ng>=2.2.0",
+    "httpx>=0.27.0",
+    "prometheus-client>=0.20.0",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "python-json-logger>=2.0.7"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+    "hypothesis>=6.103.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apps*", "services*", "packages*", "infra*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I"]
+ignore = []
