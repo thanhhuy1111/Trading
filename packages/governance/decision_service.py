@@ -17,10 +17,10 @@ derived from features computed strictly from candles with close_time <= as_of_ti
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
 
 from packages.agents.breakout import BreakoutAgent
-from packages.agents.models import AgentEvaluationContext, AgentSignal, MarketRegime
+from packages.agents.models import AgentEvaluationContext, AgentSignal, MarketRegime, StrategyType
 from packages.agents.regime import MarketRegimeAgent
 from packages.agents.reversion import MeanReversionAgent
 from packages.agents.strategy_config import StrategyConfig, default_strategy_config
@@ -59,6 +59,11 @@ class DecisionService:
         self.trend_agent = TrendAgent()
         self.reversion_agent = MeanReversionAgent()
         self.breakout_agent = BreakoutAgent()
+        self._agents_by_strategy_type = {
+            StrategyType.TREND_FOLLOWING: self.trend_agent,
+            StrategyType.MEAN_REVERSION: self.reversion_agent,
+            StrategyType.BREAKOUT: self.breakout_agent,
+        }
 
     async def decide(
         self,
@@ -70,7 +75,14 @@ class DecisionService:
         reference_price: Decimal,
         feature_set: str = "standard_v1",
         strategy_config: StrategyConfig = default_strategy_config,
+        allowed_strategy_types: Optional[FrozenSet[StrategyType]] = None,
     ) -> DecisionResult:
+        """`allowed_strategy_types`: when given (e.g. by packages/governance/strategy_router.py
+        based on the current regime), only agents whose StrategyType is in the set actually
+        run — a disallowed agent's evaluate() is never called for this bar, rather than being
+        run and its signal discarded afterward. None (the default) preserves the original
+        behavior: all three agents always run. An empty frozenset runs none, which flows
+        through consensus (INSUFFICIENT_EVIDENCE) and the allocator to a clean NO_TRADE."""
         # 1. Features (strictly from candles with close_time <= as_of_time)
         req = FeatureComputationRequest(
             exchange=exchange,
@@ -109,11 +121,12 @@ class DecisionService:
             reference_price=reference_price,
             strategy_config=strategy_config,
         )
-        signals: List[AgentSignal] = [
-            await self.trend_agent.evaluate(ctx),
-            await self.reversion_agent.evaluate(ctx),
-            await self.breakout_agent.evaluate(ctx),
-        ]
+        active_agents = (
+            list(self._agents_by_strategy_type.values())
+            if allowed_strategy_types is None
+            else [self._agents_by_strategy_type[st] for st in allowed_strategy_types]
+        )
+        signals: List[AgentSignal] = [await agent.evaluate(ctx) for agent in active_agents]
 
         # 4. Critic scrutiny
         critic_decisions = [critic_agent.review_signal(s, as_of_time) for s in signals]
