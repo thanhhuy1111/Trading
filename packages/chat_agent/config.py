@@ -30,6 +30,11 @@ class OrchestratorSettings(BaseSettings):
     CHAT_TOTAL_REQUEST_DEADLINE_SECONDS: float = 60.0
     CHAT_MAX_PROMPT_CHARS: int = 4000
     ENABLE_NEWS_RESEARCH: bool = False
+    # Minimal API-key control for the advisor's own routes -- see apps/api/dependencies.py.
+    ADVISOR_API_KEY: str = ""
+    # Coarse, process-global rate limits (no per-user identity exists in this system yet).
+    CHAT_RATE_LIMIT_PER_MINUTE: int = 30
+    RECOMMENDATION_SCAN_RATE_LIMIT_PER_MINUTE: int = 60
 
 
 gemini_settings = GeminiSettings()
