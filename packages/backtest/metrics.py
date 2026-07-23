@@ -12,7 +12,7 @@ class PerformanceMetricsEngine:
 
     def _periodic_returns(self, equity_curve: List[Decimal]) -> List[float]:
         returns: List[float] = []
-        for prev, cur in zip(equity_curve, equity_curve[1:]):
+        for prev, cur in zip(equity_curve, equity_curve[1:], strict=False):
             if prev > Decimal("0"):
                 returns.append(float((cur - prev) / prev))
         return returns

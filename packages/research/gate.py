@@ -59,12 +59,15 @@ class GateResult:
     aggregate_net_profit: Optional[Decimal] = None
 
 
+DEFAULT_GATE = PromotionGate()
+
+
 def evaluate_gate(
     symbol: str,
     config_name: str,
     config_hash: str,
     fold_results: List[FoldResult],
-    gate: PromotionGate = PromotionGate(),
+    gate: PromotionGate = DEFAULT_GATE,
 ) -> GateResult:
     reasons: List[str] = []
 

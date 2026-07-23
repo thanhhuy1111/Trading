@@ -25,7 +25,6 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -315,7 +314,10 @@ def _write_candidates(results: List[Dict]) -> None:
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        for row in sorted(all_rows, key=lambda r: (r["symbol"], r["config_name"], r["run_type"], str(r["fold_number"]), r["decision_timestamp"])):
+        def _sort_key(r):
+            return (r["symbol"], r["config_name"], r["run_type"], str(r["fold_number"]), r["decision_timestamp"])
+
+        for row in sorted(all_rows, key=_sort_key):
             writer.writerow(row)
     print(f"[campaign] full candidate lineage written: {path} ({len(all_rows)} rows)")
 
@@ -443,7 +445,10 @@ def _write_evidence(gate_results, results) -> None:
             key=lambda g: (g.mean_oos_sharpe if g.mean_oos_sharpe is not None else Decimal("-999")),
             reverse=True,
         )[:10]
-        lines.append("| Symbol | Config | Passed | Reasons | OOS Trades | Profitable Folds | Mean OOS Sharpe | Worst Fold DD % | Aggregate Net PnL |")
+        lines.append(
+            "| Symbol | Config | Passed | Reasons | OOS Trades | Profitable Folds | "
+            "Mean OOS Sharpe | Worst Fold DD % | Aggregate Net PnL |"
+        )
         lines.append("|---|---|---|---|---|---|---|---|---|")
         for g in near:
             lines.append(
@@ -466,7 +471,10 @@ def _write_evidence(gate_results, results) -> None:
             lines.append("")
             lines.append(f"**Hypothesis:** {rationale}")
             lines.append("")
-            lines.append("| Symbol | Config Hash | OOS Trades | Profitable Folds | Mean OOS Sharpe | Worst Fold DD % | Aggregate Net PnL | Reproducibility Fingerprint (fold 1) |")
+            lines.append(
+                "| Symbol | Config Hash | OOS Trades | Profitable Folds | Mean OOS Sharpe | "
+                "Worst Fold DD % | Aggregate Net PnL | Reproducibility Fingerprint (fold 1) |"
+            )
             lines.append("|---|---|---|---|---|---|---|---|")
             for g in [g for g in passed if g.config_name == config_name]:
                 fp_row = next(

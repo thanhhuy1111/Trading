@@ -172,7 +172,10 @@ def load_or_fetch(
         candles = [_candle_from_json(row) for row in raw["candles"]]
         logger.info(
             "Loaded cached real historical candles",
-            extra={"symbol": symbol, "timeframe": timeframe.value, "candle_count": len(candles), "cache_path": str(path)},
+            extra={
+                "symbol": symbol, "timeframe": timeframe.value,
+                "candle_count": len(candles), "cache_path": str(path),
+            },
         )
         return candles
 

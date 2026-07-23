@@ -6,7 +6,7 @@ key isn't registered exactly as asked, the answer is "no evidence", never "here'
 thing we have."
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from packages.evidence.models import EvidenceKey, EvidenceRecord, EvidenceStatus
@@ -28,7 +28,8 @@ class EvidenceStore:
         record = self._records.get(key)
         if record is None:
             return None
-        if record.status in (EvidenceStatus.UNIVERSAL_APPROVED, EvidenceStatus.ASSET_SPECIFIC_APPROVED) and record.is_stale(as_of):
+        approved_statuses = (EvidenceStatus.UNIVERSAL_APPROVED, EvidenceStatus.ASSET_SPECIFIC_APPROVED)
+        if record.status in approved_statuses and record.is_stale(as_of):
             # Return a STALE view rather than the stored APPROVED status — staleness is a
             # function of "now", not a stored field that needs a separate write path.
             return record.model_copy(update={"status": EvidenceStatus.STALE})

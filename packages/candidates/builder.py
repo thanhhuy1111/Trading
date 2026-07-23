@@ -32,7 +32,6 @@ def build_proposed_candidate(
         return None
 
     accepted_ids = set(decision.consensus.accepted_signals)
-    rejected_ids = set(decision.consensus.rejected_signals)
     critic_by_signal = {d.signal_id: d for d in decision.critic_decisions}
 
     supporting: List[str] = []
