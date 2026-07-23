@@ -33,6 +33,10 @@ class PositionManager:
         # never as a lifetime-cumulative counter.
         self.realized_pnl_buckets: Dict[Tuple[str, str], Decimal] = {}
         self.realized_fee_buckets: Dict[Tuple[str, str], Decimal] = {}
+        # Real fill history for this account (most recent last), for dashboards/audit — every
+        # fill that has actually been applied via apply_fill_accounting, paired with the
+        # RealizedPnlEntry produced (None for BUY fills / position-opening fills).
+        self.fill_history: List[Tuple[Fill, Optional[RealizedPnlEntry]]] = []
 
     @staticmethod
     def _utc_day_key(dt: datetime) -> str:
@@ -90,6 +94,8 @@ class PositionManager:
         if pnl_entry:
             # F-05: bucket realized PnL by the fill's event time (UTC day / ISO week)
             self._record_realized_pnl(pnl_entry.realized_pnl, pnl_entry.exit_fee, fill.executed_at)
+
+        self.fill_history.append((fill, pnl_entry))
 
         pos = self.positions.get(fill.symbol)
 

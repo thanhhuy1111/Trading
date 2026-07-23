@@ -34,6 +34,25 @@ async def list_open_positions() -> List[Dict[str, Any]]:
     return [p.model_dump(mode="json") for p in positions]
 
 
+@router.get("/fills")
+async def list_fill_history(limit: int = 50) -> List[Dict[str, Any]]:
+    """Real fill history for this account (most recent first)."""
+    recent = position_manager.fill_history[-limit:]
+    return [
+        {
+            "id": str(fill.fill_id),
+            "symbol": fill.symbol,
+            "side": fill.side,
+            "quantity": str(fill.quantity),
+            "fill_price": str(fill.price),
+            "fee": str(fill.fee),
+            "realized_pnl": str(pnl_entry.realized_pnl) if pnl_entry else None,
+            "filled_at": fill.executed_at.isoformat(),
+        }
+        for fill, pnl_entry in reversed(recent)
+    ]
+
+
 @router.get("/portfolio/snapshots/latest")
 async def get_latest_portfolio_snapshot() -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
