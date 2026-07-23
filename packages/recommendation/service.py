@@ -45,6 +45,7 @@ from packages.recommendation.opportunity_ranker import opportunity_ranker
 from packages.recommendation.proposal_builder import proposal_builder
 from packages.recommendation.proposal_store import ProposalStore, proposal_store
 from packages.recommendation.proposal_validator import check_candidate_gates
+from packages.recommendation.timeframes import max_allowed_staleness_seconds
 
 # The whole agent -> critic -> consensus -> allocator chain is evaluated as a single
 # strategy identity for evidence-approval purposes (it is one deterministic pipeline, not
@@ -135,8 +136,20 @@ class RecommendationService:
             )
         except Exception as exc:  # noqa: BLE001 - translate any adapter failure uniformly
             raise MarketDataUnavailableError(f"fetch_candles failed for {symbol}/{timeframe.value}: {exc}") from exc
+
+        # Defensive re-validation, independent of the provider's own `is_closed` flag: a
+        # kline whose close_time is still in the future cannot actually be closed yet.
+        # (Binance's public REST API always reports closeTime = open_time + interval - 1ms
+        # for the currently-forming candle too, and this repo's BinancePublicMarketDataProvider
+        # marks every returned kline is_closed=True -- see packages/market_data/adapters/
+        # binance.py. Trusting that blindly would let a not-yet-closed candle drive
+        # `as_of_time`/`reference_price`, and would show a nonsensical negative freshness to
+        # the user.) Never widen this list, never mark a filtered-out candle as usable.
+        wall_clock_now = datetime.now(timezone.utc)
+        candles = [c for c in candles if c.close_time <= wall_clock_now]
+
         if not candles:
-            raise MarketDataUnavailableError(f"No candles returned for {symbol}/{timeframe.value}")
+            raise MarketDataUnavailableError(f"No confirmed-closed candles returned for {symbol}/{timeframe.value}")
         return candles
 
     async def _fetch_order_book(self, symbol: str) -> Optional[OrderBookSnapshot]:
@@ -159,6 +172,7 @@ class RecommendationService:
             last_price: Optional[Decimal] = None
             last_data_timestamp: Optional[datetime] = None
             worst_freshness: Optional[float] = None
+            any_timeframe_stale = False
 
             for tf_str in timeframes:
                 try:
@@ -201,6 +215,8 @@ class RecommendationService:
                 if last_data_timestamp is None or as_of_time > last_data_timestamp:
                     last_data_timestamp = as_of_time
                 worst_freshness = freshness if worst_freshness is None else max(worst_freshness, freshness)
+                if freshness > max_allowed_staleness_seconds(tf_str, self._config):
+                    any_timeframe_stale = True
 
             if not tf_snapshots:
                 symbol_overviews.append(
@@ -218,9 +234,7 @@ class RecommendationService:
                 else "THIN"
             )
 
-            status = MarketStatus.NORMAL
-            if worst_freshness is not None and worst_freshness > self._config.max_market_data_staleness_seconds:
-                status = MarketStatus.STALE
+            status = MarketStatus.STALE if any_timeframe_stale else MarketStatus.NORMAL
 
             symbol_overviews.append(
                 SymbolMarketOverview(

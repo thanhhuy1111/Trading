@@ -244,7 +244,9 @@ def test_candidate_gates_pass_for_healthy_candidate():
 
 
 def test_candidate_gates_reject_stale_market_data():
-    stale = _candidate(freshness_seconds=999.0)
+    # threshold is interval-aware (timeframe interval + grace buffer); 1h + default 90s
+    # grace = 3690s, so this must exceed that, not just the flat grace value.
+    stale = _candidate(freshness_seconds=4000.0)
     passed, reasons = check_candidate_gates(stale, _prediction(), _approved_evidence())
     assert passed is False
     assert "MARKET_DATA_STALE" in reasons
@@ -310,9 +312,13 @@ def test_validate_proposal_rejects_after_expiry():
 
 
 def test_validate_proposal_rejects_stale_data_even_before_expiry():
+    # timeframe="1m" keeps the interval-aware staleness bound (interval + grace) small
+    # enough that a 60s-old 1m candle is meaningfully stale.
     config = RecommendationConfig(max_market_data_staleness_seconds=30)
-    proposal = proposal_builder.build(_candidate(), _prediction(), _approved_evidence(), config=config, now=NOW)
-    result = validate_proposal(proposal, config=config, now=NOW + timedelta(seconds=60))
+    candidate = _candidate(timeframe="1m")
+    prediction = _prediction(timeframe="1m")
+    proposal = proposal_builder.build(candidate, prediction, _approved_evidence(), config=config, now=NOW)
+    result = validate_proposal(proposal, config=config, now=NOW + timedelta(seconds=120))
     assert result.valid is False
     assert "MARKET_DATA_STALE" in result.reason_codes
 

@@ -10,6 +10,7 @@ from apps.api.routers import (
     audit,
     backtest,
     backtests,
+    chat,
     configurations,
     data_quality,
     events,
@@ -23,6 +24,7 @@ from apps.api.routers import (
     paper,
     portfolio,
     positions,
+    recommendations,
     risk,
     risk_m6,
     security,
@@ -92,6 +94,8 @@ app.include_router(backtests.router)
 app.include_router(paper.router)
 app.include_router(operations.router)
 app.include_router(security.router)
+app.include_router(chat.router)
+app.include_router(recommendations.router)
 
 
 @app.get("/metrics")

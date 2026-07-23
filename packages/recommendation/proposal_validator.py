@@ -21,6 +21,7 @@ from packages.recommendation.models import (
     TradeProposal,
     ValidationResult,
 )
+from packages.recommendation.timeframes import max_allowed_staleness_seconds
 
 
 def check_candidate_gates(
@@ -34,7 +35,7 @@ def check_candidate_gates(
     """
     reasons: List[str] = []
 
-    if candidate.freshness_seconds > config.max_market_data_staleness_seconds:
+    if candidate.freshness_seconds > max_allowed_staleness_seconds(candidate.timeframe, config):
         reasons.append("MARKET_DATA_STALE")
 
     if candidate.symbol not in config.symbols_list:
@@ -84,7 +85,7 @@ def validate_proposal(
         reasons.append("PROPOSAL_EXPIRED")
 
     staleness = (eval_time - proposal.data_timestamp).total_seconds()
-    if staleness > config.max_market_data_staleness_seconds:
+    if staleness > max_allowed_staleness_seconds(proposal.timeframe, config):
         reasons.append("MARKET_DATA_STALE")
 
     if proposal.expected_net_return_bps <= config.min_expected_net_return_bps:
