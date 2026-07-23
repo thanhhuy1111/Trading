@@ -88,36 +88,9 @@ export default function App() {
   const [showKillConfirm, setShowKillConfirm] = useState<boolean>(false);
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
   const [symbols, setSymbols] = useState<SymbolItem[]>([]);
-  const [positions, setPositions] = useState<Position[]>([
-    { id: 'P-001', symbol: 'BTC/USDT', side: 'LONG', quantity: 0.00050, avg_entry_price: 65032.50, market_price: 65032.50, unrealized_pnl: 0.00, unrealized_pnl_pct: 0.00, stop_price: 63700.00, notional: 32.52, status: 'OPEN', opened_at: new Date(Date.now() - 3600000).toISOString() },
-    { id: 'P-002', symbol: 'ETH/USDT', side: 'LONG', quantity: 0.0090, avg_entry_price: 3380.00, market_price: 3412.80, unrealized_pnl: 0.30, unrealized_pnl_pct: 0.97, stop_price: 3280.00, notional: 30.72, status: 'OPEN', opened_at: new Date(Date.now() - 7200000).toISOString() }
-  ]);
-  const [fills, _setFills] = useState<Fill[]>([
-    { id: 'F-801', symbol: 'BTC/USDT', side: 'BUY', quantity: 0.00050, fill_price: 65032.50, fee: 0.03, realized_pnl: null, filled_at: new Date(Date.now() - 3600000).toISOString() },
-    { id: 'F-800', symbol: 'ETH/USDT', side: 'BUY', quantity: 0.0090, fill_price: 3380.00, fee: 0.03, realized_pnl: null, filled_at: new Date(Date.now() - 7200000).toISOString() },
-    { id: 'F-799', symbol: 'BTC/USDT', side: 'SELL', quantity: 0.00030, fill_price: 64800.00, fee: 0.02, realized_pnl: -0.07, filled_at: new Date(Date.now() - 18000000).toISOString() },
-    { id: 'F-798', symbol: 'ETH/USDT', side: 'SELL', quantity: 0.0050, fill_price: 3450.20, fee: 0.02, realized_pnl: 0.35, filled_at: new Date(Date.now() - 86400000).toISOString() }
-  ]);
-  const [pendingOrders, _setPendingOrders] = useState<PendingOrder[]>([
-    {
-      id: 'ORD-2201', symbol: 'BTC/USDT', side: 'BUY', order_type: 'LIMIT',
-      quantity: 0.00040, limit_price: 64500.00, stop_price: null,
-      filled_qty: 0, status: 'PENDING', time_in_force: 'GTC',
-      created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString()
-    },
-    {
-      id: 'ORD-2200', symbol: 'ETH/USDT', side: 'BUY', order_type: 'LIMIT',
-      quantity: 0.0060, limit_price: 3350.00, stop_price: null,
-      filled_qty: 0.0020, status: 'PARTIALLY_FILLED', time_in_force: 'GTC',
-      created_at: new Date(Date.now() - 35 * 60 * 1000).toISOString()
-    },
-    {
-      id: 'ORD-2199', symbol: 'BTC/USDT', side: 'SELL', order_type: 'STOP_LIMIT',
-      quantity: 0.00050, limit_price: 63600.00, stop_price: 63700.00,
-      filled_qty: 0, status: 'OPEN', time_in_force: 'GTC',
-      created_at: new Date(Date.now() - 65 * 60 * 1000).toISOString()
-    }
-  ]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [fills, setFills] = useState<Fill[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [livePrices, setLivePrices] = useState<Record<string, number>>({ 'BTC/USDT': 65032.50, 'ETH/USDT': 3412.80 });
   const [priceDir, setPriceDir] = useState<Record<string, 'up' | 'down' | null>>({});
 
@@ -136,40 +109,63 @@ export default function App() {
     open_positions_count: 0
   });
 
-  // Simulate live price ticking for demo
+  // Real live prices from Binance public REST API (via backend /market-data/live-prices)
   useEffect(() => {
-    const priceInterval = setInterval(() => {
-      setLivePrices(prev => {
-        const btcDelta = (Math.random() - 0.49) * 80;
-        const ethDelta = (Math.random() - 0.49) * 12;
-        const newBtc = Math.max(60000, prev['BTC/USDT'] + btcDelta);
-        const newEth = Math.max(3000, prev['ETH/USDT'] + ethDelta);
-        setPriceDir({
-          'BTC/USDT': btcDelta >= 0 ? 'up' : 'down',
-          'ETH/USDT': ethDelta >= 0 ? 'up' : 'down'
+    const fetchLivePrices = async () => {
+      try {
+        const res = await fetch('/api/market-data/live-prices?symbols=BTC/USDT,ETH/USDT');
+        if (!res.ok) return;
+        const data = await res.json();
+        const fetched: Record<string, number> = {};
+        for (const [sym, priceStr] of Object.entries(data.prices || {})) {
+          fetched[sym] = parseFloat(priceStr as string);
+        }
+        if (Object.keys(fetched).length === 0) return;
+
+        setLivePrices(prev => {
+          const dirs: Record<string, 'up' | 'down' | null> = {};
+          for (const sym of Object.keys(fetched)) {
+            if (prev[sym] !== undefined && fetched[sym] !== prev[sym]) {
+              dirs[sym] = fetched[sym] >= prev[sym] ? 'up' : 'down';
+            }
+          }
+          setPriceDir(dirs);
+
+          // Update positions unrealized PnL against the real price
+          setPositions(prev2 => prev2.map(p => {
+            const mp = fetched[p.symbol] ?? p.market_price;
+            const pnl = (mp - p.avg_entry_price) * p.quantity;
+            const pnlPct = ((mp - p.avg_entry_price) / p.avg_entry_price) * 100;
+            return { ...p, market_price: mp, unrealized_pnl: pnl, unrealized_pnl_pct: pnlPct, notional: mp * p.quantity };
+          }));
+
+          return { ...prev, ...fetched };
         });
-        // Update positions unrealized PnL
-        setPositions(prev2 => prev2.map(p => {
-          const mp = p.symbol === 'BTC/USDT' ? newBtc : newEth;
-          const pnl = (mp - p.avg_entry_price) * p.quantity;
-          const pnlPct = ((mp - p.avg_entry_price) / p.avg_entry_price) * 100;
-          return { ...p, market_price: mp, unrealized_pnl: pnl, unrealized_pnl_pct: pnlPct, notional: mp * p.quantity };
-        }));
-        return { 'BTC/USDT': newBtc, 'ETH/USDT': newEth };
-      });
-      setTimeout(() => setPriceDir({}), 600);
-    }, 2000);
+        setTimeout(() => setPriceDir({}), 600);
+      } catch (e) {
+        // Network/backend unavailable: leave the last known real price on screen (no fake fallback).
+      }
+    };
+
+    fetchLivePrices();
+    const priceInterval = setInterval(fetchLivePrices, 2000);
     return () => clearInterval(priceInterval);
   }, []);
 
   useEffect(() => {
     fetchStatus();
     fetchPortfolio();
+    fetchPositions();
+    fetchFills();
+    fetchPendingOrders();
     fetchConfigs();
     fetchSymbols();
     const interval = setInterval(() => {
       fetchStatus();
       fetchPortfolio();
+      fetchPositions();
+      fetchFills();
+      fetchPendingOrders();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -199,10 +195,84 @@ export default function App() {
       const res = await fetch('/api/portfolio');
       if (res.ok) {
         const data = await res.json();
-        setPortfolio(data);
+        // Backend serializes Decimal fields as JSON strings for precision; parse them to
+        // numbers here so arithmetic below (e.g. nav + totalUnrealized) doesn't silently
+        // fall back to string concatenation.
+        setPortfolio({
+          total_nav: parseFloat(data.total_nav),
+          cash_balance: parseFloat(data.cash_balance),
+          unrealized_pnl: parseFloat(data.unrealized_pnl),
+          realized_pnl_today: parseFloat(data.realized_pnl_today),
+          current_drawdown_pct: Number(data.current_drawdown_pct) || 0,
+          open_positions_count: Number(data.open_positions_count) || 0,
+        });
       }
     } catch (e) {
       // Fallback
+    }
+  };
+
+  const fetchPositions = async () => {
+    try {
+      const res = await fetch('/api/positions');
+      if (!res.ok) return;
+      const data = await res.json();
+      setPositions((data as any[]).map((p) => {
+        const qty = parseFloat(p.quantity);
+        const avgEntry = parseFloat(p.average_entry_price);
+        const marketPrice = parseFloat(p.current_market_price ?? p.average_entry_price);
+        const unrealizedPnl = parseFloat(p.unrealized_pnl ?? '0');
+        const unrealizedPnlPct = avgEntry > 0 ? ((marketPrice - avgEntry) / avgEntry) * 100 : 0;
+        return {
+          id: p.position_id,
+          symbol: p.symbol,
+          side: p.side === 'SHORT' ? 'SHORT' : 'LONG',
+          quantity: qty,
+          avg_entry_price: avgEntry,
+          market_price: marketPrice,
+          unrealized_pnl: unrealizedPnl,
+          unrealized_pnl_pct: unrealizedPnlPct,
+          stop_price: parseFloat(p.active_stop_price ?? p.initial_stop_price ?? '0'),
+          notional: parseFloat(p.market_value ?? (qty * marketPrice).toString()),
+          status: p.status,
+          opened_at: p.opened_at,
+        } as Position;
+      }));
+    } catch (e) {
+      // Fallback: leave last known positions on screen
+    }
+  };
+
+  const fetchFills = async () => {
+    try {
+      const res = await fetch('/api/fills');
+      if (!res.ok) return;
+      const data = await res.json();
+      setFills((data as any[]).map((f) => ({
+        id: f.id,
+        symbol: f.symbol,
+        side: f.side,
+        quantity: parseFloat(f.quantity),
+        fill_price: parseFloat(f.fill_price),
+        fee: parseFloat(f.fee),
+        realized_pnl: f.realized_pnl !== null ? parseFloat(f.realized_pnl) : null,
+        filled_at: f.filled_at,
+      } as Fill)));
+    } catch (e) {
+      // Fallback: leave last known fills on screen
+    }
+  };
+
+  const fetchPendingOrders = async () => {
+    try {
+      const res = await fetch('/api/orders');
+      if (!res.ok) return;
+      const data = await res.json();
+      // Honestly empty in the current execution model (no resting/GTC order book — every
+      // order fills or is rejected immediately), so this will normally return [].
+      setPendingOrders(data as PendingOrder[]);
+    } catch (e) {
+      // Fallback: leave last known orders on screen
     }
   };
 
