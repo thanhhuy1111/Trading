@@ -1,0 +1,24 @@
+{
+  "campaign": "full_alpha_research_campaign",
+  "generated_at": "2026-07-23T13:02:52.859577+00:00",
+  "git_sha": "1169172b96d58ebeff8558af2a1e16250d544930",
+  "symbols": [
+    "BTC/USDT",
+    "ETH/USDT"
+  ],
+  "timeframe": "1d",
+  "num_configs": 15,
+  "num_folds": 3,
+  "data_range": {
+    "start": "2019-01-07T23:59:59.999000+00:00",
+    "end": "2026-07-23T23:59:59.999000+00:00"
+  },
+  "worker_processes": 4,
+  "elapsed_seconds": 27.82,
+  "total_experiments": 120,
+  "experiments_ok": 120,
+  "experiments_errored": 0,
+  "symbol_config_pairs_evaluated": 30,
+  "symbol_config_pairs_passed_gate": 14,
+  "configs_promoted_all_symbols": []
+}

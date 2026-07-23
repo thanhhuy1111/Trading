@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
@@ -8,6 +9,54 @@ from packages.backtest.models import BacktestMetrics, TradeEpisode
 
 class PerformanceMetricsEngine:
     """Calculates comprehensive backtest performance metrics."""
+
+    def _periodic_returns(self, equity_curve: List[Decimal]) -> List[float]:
+        returns: List[float] = []
+        for prev, cur in zip(equity_curve, equity_curve[1:]):
+            if prev > Decimal("0"):
+                returns.append(float((cur - prev) / prev))
+        return returns
+
+    def _risk_adjusted_ratios(
+        self,
+        equity_curve: List[Decimal],
+        duration_days: int,
+        annualized_return_pct: Optional[Decimal],
+        max_dd_pct: Decimal,
+    ) -> tuple:
+        """Computes Sharpe, Sortino and Calmar from the realized equity curve.
+
+        Zero risk-free rate (standard for crypto perpetual/spot research). Periods-per-year
+        is inferred from the actual bar count over the wall-clock duration, so the
+        annualization factor is correct regardless of the dataset timeframe (1h, 4h, 1d...).
+        """
+        returns = self._periodic_returns(equity_curve)
+        if len(returns) < 2 or duration_days <= 0:
+            return None, None, None
+
+        periods_per_year = len(returns) / (duration_days / 365.25)
+
+        mean_r = sum(returns) / len(returns)
+        variance = sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1)
+        std_r = math.sqrt(variance)
+
+        sharpe: Optional[Decimal] = None
+        if std_r > 0:
+            sharpe = Decimal(str(round((mean_r / std_r) * math.sqrt(periods_per_year), 4)))
+
+        downside_returns = [r for r in returns if r < 0]
+        sortino: Optional[Decimal] = None
+        if downside_returns:
+            downside_variance = sum(r ** 2 for r in downside_returns) / len(downside_returns)
+            downside_std = math.sqrt(downside_variance)
+            if downside_std > 0:
+                sortino = Decimal(str(round((mean_r / downside_std) * math.sqrt(periods_per_year), 4)))
+
+        calmar: Optional[Decimal] = None
+        if annualized_return_pct is not None and max_dd_pct > Decimal("0"):
+            calmar = Decimal(str(round(float(annualized_return_pct) / float(max_dd_pct), 4)))
+
+        return sharpe, sortino, calmar
 
     def compute_metrics(
         self,
@@ -47,6 +96,10 @@ class PerformanceMetricsEngine:
 
         max_dd_pct_formatted = max_dd_pct * Decimal("100.0")
 
+        sharpe_ratio, sortino_ratio, calmar_ratio = self._risk_adjusted_ratios(
+            equity_curve, duration_days, annualized_return_pct, max_dd_pct_formatted
+        )
+
         total_trades = len(episodes)
         winning_trades = [e for e in episodes if e.net_pnl > Decimal("0.0")]
         losing_trades = [e for e in episodes if e.net_pnl < Decimal("0.0")]
@@ -76,9 +129,9 @@ class PerformanceMetricsEngine:
             total_return_pct=total_return_pct,
             annualized_return_pct=annualized_return_pct,
             max_drawdown_pct=max_dd_pct_formatted,
-            sharpe_ratio=None,
-            sortino_ratio=None,
-            calmar_ratio=None,
+            sharpe_ratio=sharpe_ratio,
+            sortino_ratio=sortino_ratio,
+            calmar_ratio=calmar_ratio,
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_trades=total_trades,

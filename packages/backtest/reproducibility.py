@@ -23,7 +23,8 @@ class ReproducibilityVerifier:
             f"SAME_BAR:{config.liquidity_config.same_bar_fill_allowed}|"
             f"CODE:{code_version}|"
             f"FEATURE_VER:{config.feature_set_version}|"
-            f"RISK_VER:{config.risk_policy_version}"
+            f"RISK_VER:{config.risk_policy_version}|"
+            f"STRATEGY_CONFIG:{config.strategy_config.config_hash}"
         )
         hasher.update(raw_str.encode("utf-8"))
         return hasher.hexdigest()

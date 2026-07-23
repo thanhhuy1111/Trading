@@ -21,8 +21,17 @@ from packages.governance.decision_service import decision_service
 from packages.market_data.guardian import data_guardian
 from packages.positions.exit_governor import exit_risk_validator
 from packages.positions.exit_protector import ExitProtector
+from packages.positions.ledger import PortfolioLedger
 from packages.positions.manager import PositionManager
 from packages.risk.governor import deterministic_risk_governor
+
+# Every registered feature calculator's required_lookback is bounded (<=28 candles for the
+# "standard_v1" feature set: adx_14 needs period*2=28, the rest need <=23). This window is a
+# generous multiple of that so decision quality is byte-identical to passing full history, while
+# keeping per-bar feature computation O(window) instead of O(bars_processed_so_far). Without this
+# bound, a multi-year replay is O(n^2) in candle count, which is the dominant cost at large-scale
+# multi-symbol/multi-config research campaign runs.
+FEATURE_LOOKBACK_WINDOW = 250
 
 
 class EventDrivenBacktestEngine:
@@ -61,6 +70,13 @@ class EventDrivenBacktestEngine:
         return session
 
     def run_backtest(self, session_id: UUID) -> BacktestReport:
+        """Synchronous entrypoint. Runs the whole session inside a single asyncio event
+        loop (see `_run_backtest_async`) instead of opening/tearing down a new loop on every
+        candle, which is the historical behaviour this replaces performance-wise only —
+        the decision sequence and every intermediate value are unchanged."""
+        return asyncio.run(self._run_backtest_async(session_id))
+
+    async def _run_backtest_async(self, session_id: UUID) -> BacktestReport:
         session = self.active_sessions.get(session_id)
         config = self.session_configs.get(session_id)
         if not session or not config:
@@ -74,10 +90,16 @@ class EventDrivenBacktestEngine:
         session.status = BacktestStatus.RUNNING
         session.started_at = datetime.now(timezone.utc)
 
-        # Isolated Session State
+        # Isolated Session State. A dedicated PortfolioLedger seeded from config.initial_cash
+        # is required here — PositionManager falls back to the module-global `portfolio_ledger`
+        # singleton when no ledger is injected, which would leak cash/asset balances across
+        # every backtest session sharing this process (e.g. sequential runs, or many sessions
+        # sharing one worker in a parallel research campaign). Paper trading already injects
+        # its own per-session ledger (packages/paper/pipeline.py); the backtest engine must too.
         clock = ReplayClock(config.warmup_start_time)
         session_account_id = f"BACKTEST_{session.session_id}"
-        pos_mgr = PositionManager(account_id=session_account_id)
+        session_ledger = PortfolioLedger(initial_cash=config.initial_cash, account_id=session_account_id)
+        pos_mgr = PositionManager(account_id=session_account_id, ledger=session_ledger)
         exit_prot = ExitProtector()
 
         episodes: List[TradeEpisode] = []
@@ -169,16 +191,18 @@ class EventDrivenBacktestEngine:
 
             # 3. Strategy & governance — SAME DecisionService as paper trading (no fabrication).
             if not pos or pos.status == "CLOSED":
-                buffer = all_candles[:idx + 1]  # closed candles with close_time <= current bar
-                decision = asyncio.run(
-                    decision_service.decide(
-                        exchange="binance",
-                        symbol=active_symbol,
-                        timeframe=candle.timeframe,
-                        candles=buffer,
-                        as_of_time=candle.close_time,
-                        reference_price=candle.close_price,
-                    )
+                # Bounded trailing window: identical feature values to passing full history
+                # (see FEATURE_LOOKBACK_WINDOW), O(window) per bar instead of O(idx).
+                window_start = max(0, idx + 1 - FEATURE_LOOKBACK_WINDOW)
+                buffer = all_candles[window_start:idx + 1]  # closed candles with close_time <= current bar
+                decision = await decision_service.decide(
+                    exchange="binance",
+                    symbol=active_symbol,
+                    timeframe=candle.timeframe,
+                    candles=buffer,
+                    as_of_time=candle.close_time,
+                    reference_price=candle.close_price,
+                    strategy_config=config.strategy_config,
                 )
                 intent = decision.trade_intent
                 if intent is not None:

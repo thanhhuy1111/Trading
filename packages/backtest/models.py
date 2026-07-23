@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from packages.agents.strategy_config import StrategyConfig, default_strategy_config
+
 
 class DatasetQualityStatus(str, Enum):
     VALIDATED = "VALIDATED"
@@ -91,6 +93,10 @@ class BacktestConfig(BaseModel):
     execution_policy_version: str = "1.0.0"
     exit_policy_version: str = "1.0.0"
     simulator_version: str = "1.0.0"
+    # Versioned agent-parameter set fed into DecisionService for this session. Distinct
+    # configs must yield distinct config_checksum fingerprints (see ReproducibilityVerifier)
+    # so research-campaign experiments are individually reproducible and auditable.
+    strategy_config: StrategyConfig = Field(default_factory=lambda: default_strategy_config)
     random_seed: int = 42
     enable_stop_loss: bool = True
     enable_take_profit: bool = True

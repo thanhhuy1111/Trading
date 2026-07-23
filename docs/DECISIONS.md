@@ -72,6 +72,35 @@ This document logs key architectural decisions, rationale, and tradeoffs made fo
 
 ---
 
+## ADR-008: Per-Session Ledger Isolation in the Backtest Engine
+
+* **Status**: APPROVED & ENFORCED
+* **Context**: `PositionManager` supports session-scoped ledger injection (`ledger=` constructor
+  argument) for full accounting isolation, and `packages/paper/pipeline.py` always injects one.
+  `packages/backtest/engine.py` did not — it constructed `PositionManager(account_id=...)` with
+  no `ledger=`, which silently falls back to the module-global `portfolio_ledger` singleton
+  (`packages/positions/ledger.py`). Any two backtest sessions sharing a Python process (sequential
+  runs, or parallel worker processes each running many sessions, as in the Alpha Research
+  Campaign — `packages/research/campaign.py`) therefore accumulated cash/asset balance across
+  runs instead of starting from `config.initial_cash`. Existing tests didn't catch it because
+  they only asserted relative equality between paired runs (both runs inherited the same
+  contamination and matched each other), never an absolute check against a fresh balance. This
+  was discovered when the research campaign's first pass produced implausible, near-constant
+  ~90%+ returns on ETH/USDT regardless of the market period tested — a signature of a growing
+  shared cash balance, not a real trading edge.
+* **Decision**: `EventDrivenBacktestEngine._run_backtest_async` now constructs a dedicated
+  `PortfolioLedger(initial_cash=config.initial_cash, account_id=session_account_id)` per session
+  and injects it into `PositionManager`, matching the isolation pattern paper trading already
+  uses.
+* **Consequences**: Every backtest session's accounting is now fully isolated regardless of how
+  many sessions share a process. Historical backtest results produced before this fix that ran
+  multiple sessions per process (e.g. any script or test running >1 `run_backtest` call in one
+  process) may have understated or overstated returns depending on ledger state left by prior
+  sessions in that process; single-session-per-process usage (the API route, most tests) was
+  unaffected.
+
+---
+
 ## Known Technical Debt & Ongoing Verification Log
 
 1. **Redpanda Integration**: Live Redpanda cluster integration pending verification in full profile environment.
