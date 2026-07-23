@@ -45,6 +45,8 @@ class FeatureConfig(BaseModel):
     version: str = "standard_v1"
     feature_names: List[str] = Field(default_factory=lambda: list(FEATURE_NAMES))
     missing_value_policy: str = "ZERO_FILL_NO_FORWARD_FILL"
+    lookback_window: int = 300
+    warmup_periods: int = 60
 
 
 class LabelConfig(BaseModel):

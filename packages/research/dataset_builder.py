@@ -12,13 +12,12 @@ from typing import List, Tuple
 
 from packages.market_data.guardian import data_guardian
 from packages.market_data.models import Candle, Timeframe
+from packages.recommendation.timeframes import TIMEFRAME_SECONDS
 from packages.research.candle_repository import candles_to_dataframe
 from packages.research.checksums import checksum_candles, get_code_commit
 from packages.research.config import DatasetConfig
 from packages.research.exceptions import DatasetValidationError
 from packages.research.models import DatasetQualityStatus, RawCandleDataset
-
-_TIMEFRAME_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
 
 def build_raw_candle_dataset(
@@ -95,7 +94,7 @@ def build_raw_candle_dataset(
         groups.setdefault((c.symbol, tf_value), []).append(c)
 
     for (_symbol, tf_value), group_candles in groups.items():
-        expected_step = _TIMEFRAME_SECONDS.get(tf_value)
+        expected_step = TIMEFRAME_SECONDS.get(tf_value)
         if expected_step is None:
             continue
         for i in range(1, len(group_candles)):
