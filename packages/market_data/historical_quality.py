@@ -63,6 +63,31 @@ class DatasetQualityReport:
     def missing_candle_count(self) -> int:
         return sum(g.missing_count for g in self.gaps)
 
+    @property
+    def raw_ingestion_status(self) -> str:
+        """Reflects the RAW fetch, before cleaning: did the source return anything that had to
+        be discarded (a still-forming boundary candle, an invalid row, a future timestamp)?
+        A WARNING here is often expected and benign (see clean_dataset_status) — it just means
+        "the ingestion process saw something worth noting", not "the resulting dataset is bad"."""
+        if self.total_input_candles == 0:
+            return "ERROR"
+        defects = (
+            self.partial_candle_count + self.future_timestamp_count
+            + self.invalid_ohlc_count + self.negative_volume_count
+        )
+        return "WARNING" if defects > 0 else "OK"
+
+    @property
+    def clean_dataset_status(self) -> str:
+        """Reflects only the CLEANED series that survives filtering — a forming boundary
+        candle correctly stripped during ingestion must not, by itself, make this anything
+        other than ACCEPTABLE. Mirrors `status` under friendlier names for this exact purpose."""
+        return {
+            DatasetQualityStatus.VALIDATED: "ACCEPTABLE",
+            DatasetQualityStatus.DEGRADED: "DEGRADED",
+            DatasetQualityStatus.REJECTED: "REJECTED",
+        }[self.status]
+
 
 # Severe-gap threshold: if missing candles exceed this fraction of the expected total for the
 # segment, the whole segment is REJECTED rather than merely DEGRADED. Declared here (not

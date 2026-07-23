@@ -63,6 +63,37 @@ def test_not_yet_closed_candle_is_dropped() -> None:
     assert all(c.close_time != open_candle.close_time for c in clean)
 
 
+def test_forming_boundary_candle_warns_raw_but_clean_stays_acceptable() -> None:
+    """Phase 0.2: a still-forming candle that gets correctly stripped during ingestion must
+    not, by itself, make the resulting clean dataset unusable."""
+    open_candle = _candle(5, is_closed=False)
+    candles = [_candle(i) for i in range(5)] + [open_candle]
+    clean, report = validate_historical_series(candles, Timeframe.H1, as_of=T0 + timedelta(hours=10))
+    assert report.raw_ingestion_status == "WARNING"
+    assert report.clean_dataset_status == "ACCEPTABLE"
+
+
+def test_no_defects_reports_ok_raw_and_acceptable_clean() -> None:
+    candles = [_candle(i) for i in range(24)]
+    clean, report = validate_historical_series(candles, Timeframe.H1, as_of=T0 + timedelta(hours=30))
+    assert report.raw_ingestion_status == "OK"
+    assert report.clean_dataset_status == "ACCEPTABLE"
+
+
+def test_gap_in_clean_series_is_degraded_even_with_clean_raw_ingestion() -> None:
+    first = [_candle(i) for i in range(20)]
+    second = [_candle(i) for i in range(23, 43)]
+    clean, report = validate_historical_series(first + second, Timeframe.H1, as_of=T0 + timedelta(hours=50))
+    assert report.raw_ingestion_status == "OK"  # nothing had to be discarded from the raw input
+    assert report.clean_dataset_status == "DEGRADED"  # but the clean series itself has a gap
+
+
+def test_empty_input_reports_error_raw_status() -> None:
+    clean, report = validate_historical_series([], Timeframe.H1)
+    assert report.raw_ingestion_status == "ERROR"
+    assert report.clean_dataset_status == "REJECTED"
+
+
 def test_future_timestamp_candle_is_rejected() -> None:
     as_of = T0 + timedelta(hours=5)
     future = _candle(20)  # well beyond as_of

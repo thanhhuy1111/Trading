@@ -1,0 +1,270 @@
+{
+  "generated_at": "2026-07-23T14:40:38.620686+00:00",
+  "total_anomalies": 24,
+  "diagnostics": [
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T11:59:59.999000+00:00",
+      "current_timestamp": "2023-03-24T12:39:41.646000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 2381.647,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2023-03-24T12:39:41.646000+00:00 does not align to the expected 1:00:00 grid (offset 0:39:41.647000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BTCUSDT_1h.json"
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T12:39:41.646000+00:00",
+      "current_timestamp": "2023-03-24T14:59:59.999000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 8418.353,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 2:20:18.353000 is neither the expected 1:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BTCUSDT_1h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T11:59:59.999000+00:00",
+      "current_timestamp": "2023-03-24T12:39:43.061000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 2383.062,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2023-03-24T12:39:43.061000+00:00 does not align to the expected 1:00:00 grid (offset 0:39:43.062000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/ETHUSDT_1h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T12:39:43.061000+00:00",
+      "current_timestamp": "2023-03-24T14:59:59.999000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 8416.938,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 2:20:16.938000 is neither the expected 1:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/ETHUSDT_1h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T11:59:59.999000+00:00",
+      "current_timestamp": "2023-03-24T12:39:41.451000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 2381.452,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2023-03-24T12:39:41.451000+00:00 does not align to the expected 1:00:00 grid (offset 0:39:41.452000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BNBUSDT_1h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T12:39:41.451000+00:00",
+      "current_timestamp": "2023-03-24T14:59:59.999000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 8418.548,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 2:20:18.548000 is neither the expected 1:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BNBUSDT_1h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T11:59:59.999000+00:00",
+      "current_timestamp": "2023-03-24T12:39:46.948000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 2386.949,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2023-03-24T12:39:46.948000+00:00 does not align to the expected 1:00:00 grid (offset 0:39:46.949000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/SOLUSDT_1h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "1h",
+      "previous_timestamp": "2023-03-24T12:39:46.948000+00:00",
+      "current_timestamp": "2023-03-24T14:59:59.999000+00:00",
+      "expected_delta_seconds": 3600.0,
+      "actual_delta_seconds": 8413.051,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 2:20:13.051000 is neither the expected 1:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/SOLUSDT_1h.json"
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-12T23:59:59.999000+00:00",
+      "current_timestamp": "2021-08-13T01:59:59+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 7199.001,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-08-13T01:59:59+00:00 does not align to the expected 4:00:00 grid (offset 1:59:59.001000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BTCUSDT_4h.json"
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-13T01:59:59+00:00",
+      "current_timestamp": "2021-08-13T07:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 21600.999,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 6:00:00.999000 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BTCUSDT_4h.json"
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T03:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 10800.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-09-29T06:59:59.999000+00:00 does not align to the expected 4:00:00 grid (offset 3:00:00); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BTCUSDT_4h.json"
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T11:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 18000.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 5:00:00 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BTCUSDT_4h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-12T23:59:59.999000+00:00",
+      "current_timestamp": "2021-08-13T01:59:59+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 7199.001,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-08-13T01:59:59+00:00 does not align to the expected 4:00:00 grid (offset 1:59:59.001000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/ETHUSDT_4h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-13T01:59:59+00:00",
+      "current_timestamp": "2021-08-13T07:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 21600.999,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 6:00:00.999000 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/ETHUSDT_4h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T03:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 10800.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-09-29T06:59:59.999000+00:00 does not align to the expected 4:00:00 grid (offset 3:00:00); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/ETHUSDT_4h.json"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T11:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 18000.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 5:00:00 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/ETHUSDT_4h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-12T23:59:59.999000+00:00",
+      "current_timestamp": "2021-08-13T01:59:59+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 7199.001,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-08-13T01:59:59+00:00 does not align to the expected 4:00:00 grid (offset 1:59:59.001000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BNBUSDT_4h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-13T01:59:59+00:00",
+      "current_timestamp": "2021-08-13T07:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 21600.999,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 6:00:00.999000 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BNBUSDT_4h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T03:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 10800.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-09-29T06:59:59.999000+00:00 does not align to the expected 4:00:00 grid (offset 3:00:00); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/BNBUSDT_4h.json"
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T11:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 18000.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 5:00:00 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/BNBUSDT_4h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-12T23:59:59.999000+00:00",
+      "current_timestamp": "2021-08-13T01:59:59+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 7199.001,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-08-13T01:59:59+00:00 does not align to the expected 4:00:00 grid (offset 1:59:59.001000); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/SOLUSDT_4h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-08-13T01:59:59+00:00",
+      "current_timestamp": "2021-08-13T07:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 21600.999,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 6:00:00.999000 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/SOLUSDT_4h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T03:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 10800.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Candle at 2021-09-29T06:59:59.999000+00:00 does not align to the expected 4:00:00 grid (offset 3:00:00); the same UTC minute/second pattern recurs identically across multiple independent symbols in this dataset, which rules out a per-symbol data error and points to a shared exchange-side event (e.g. a brief kline-generation disruption) rather than a bug in this fetch pipeline.",
+      "source_file": "data/research/candles/SOLUSDT_4h.json"
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "4h",
+      "previous_timestamp": "2021-09-29T06:59:59.999000+00:00",
+      "current_timestamp": "2021-09-29T11:59:59.999000+00:00",
+      "expected_delta_seconds": 14400.0,
+      "actual_delta_seconds": 18000.0,
+      "classification": "SOURCE_ANOMALY",
+      "explanation": "Spacing 5:00:00 is neither the expected 4:00:00 nor an exact multiple of it. Immediately follows a misaligned candle in this same series, consistent with the exchange's kline generation recovering mid-interval after a disruption rather than a client-side fetch defect.",
+      "source_file": "data/research/candles/SOLUSDT_4h.json"
+    }
+  ]
+}

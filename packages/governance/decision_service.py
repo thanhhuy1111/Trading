@@ -19,6 +19,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import FrozenSet, List, Optional
 
+from packages.agents.base import StrategyAgent
 from packages.agents.breakout import BreakoutAgent
 from packages.agents.models import AgentEvaluationContext, AgentSignal, MarketRegime, StrategyType
 from packages.agents.regime import MarketRegimeAgent
@@ -59,7 +60,7 @@ class DecisionService:
         self.trend_agent = TrendAgent()
         self.reversion_agent = MeanReversionAgent()
         self.breakout_agent = BreakoutAgent()
-        self._agents_by_strategy_type = {
+        self._agents_by_strategy_type: dict[StrategyType, StrategyAgent] = {
             StrategyType.TREND_FOLLOWING: self.trend_agent,
             StrategyType.MEAN_REVERSION: self.reversion_agent,
             StrategyType.BREAKOUT: self.breakout_agent,

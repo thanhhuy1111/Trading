@@ -14,7 +14,7 @@ no agent behind it would silently do nothing while looking like a real routing d
 """
 
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, List
+from typing import Dict, FrozenSet, List, Tuple
 
 from packages.agents.models import MarketRegime, StrategyType
 
@@ -32,7 +32,7 @@ class RoutingDecision:
 
 # regime -> (allowed strategy types, reason codes). An empty set means NO_TRADE for this
 # regime regardless of what any agent would otherwise say.
-_ROUTING_TABLE: Dict[MarketRegime, tuple] = {
+_ROUTING_TABLE: Dict[MarketRegime, Tuple[FrozenSet[StrategyType], List[str]]] = {
     MarketRegime.TREND_UP: (
         frozenset({StrategyType.TREND_FOLLOWING}),
         ["REGIME_TREND_UP", "PULLBACK_STRATEGY_NOT_IMPLEMENTED"],

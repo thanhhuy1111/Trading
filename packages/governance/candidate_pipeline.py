@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from packages.agents.regime import MarketRegimeAgent
+from packages.agents.regime import MarketRegimeAgent, RegimeResult
 from packages.agents.strategy_config import StrategyConfig, default_strategy_config
 from packages.candidates.builder import build_proposed_candidate
 from packages.candidates.models import TradeCandidate
@@ -26,7 +26,7 @@ _regime_agent = MarketRegimeAgent()
 @dataclass
 class PipelineOutcome:
     candidate: Optional[TradeCandidate]
-    regime_result: Optional[object]  # RegimeResult, kept loosely typed to avoid an import cycle
+    regime_result: Optional[RegimeResult]
     routing_decision: Optional[RoutingDecision]
     rejected_reason: Optional[str] = None
 
@@ -48,7 +48,11 @@ async def run_candidate_pipeline(
     (bad data, stale data, no-trade regime, no signal) returns a PipelineOutcome with
     candidate=None and a reason, not a placeholder."""
 
-    def _reject(reason: str, regime_result=None, routing_decision=None) -> PipelineOutcome:
+    def _reject(
+        reason: str,
+        regime_result: Optional[RegimeResult] = None,
+        routing_decision: Optional[RoutingDecision] = None,
+    ) -> PipelineOutcome:
         return PipelineOutcome(
             candidate=None, regime_result=regime_result, routing_decision=routing_decision, rejected_reason=reason,
         )
