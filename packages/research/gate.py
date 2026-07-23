@@ -10,11 +10,23 @@ the published evidence document.
 Thresholds are deliberately conservative and documented (see docs/research/
 ALPHA_RESEARCH_GATE.md) rather than tuned post-hoc to whatever the campaign happens to
 produce — that would defeat the purpose of having a gate.
+
+`apply_overfitting_controls` is a SEPARATE, second layer on top of `evaluate_gate`'s
+fixed-threshold criteria: it never turns a failed gate into a passed one, only the reverse
+(downgrade-only, same policy `packages.research.evidence_publisher` uses on the
+feat/alpha-dataset-training lineage this reconciles). `evaluate_gate` itself is intentionally
+left unmodified — it is single-trial-scoped and has no visibility into how many other configs
+were tried, which is exactly what a multiple-testing correction needs; that context only
+exists one level up, at the campaign's per-symbol config-grid loop.
 """
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import List, Optional
+from statistics import pstdev
+from typing import Dict, List, Optional
+
+from packages.research.exceptions import InsufficientDataError
+from packages.research.overfitting import compute_pbo, deflated_sharpe_ratio, performance_matrix_from_window_breakdowns
 
 # Bump this whenever PromotionGate's thresholds or evaluation logic change. Evidence records
 # bind to the exact gate_version that produced them (packages/evidence/models.py) — a config
@@ -30,6 +42,12 @@ class PromotionGate:
     max_worst_fold_drawdown_pct: Decimal = Decimal("25.0")
     require_positive_aggregate_pnl: bool = True
     require_every_fold_populated: bool = True
+    # Second-layer overfitting controls (see apply_overfitting_controls below). DSR asks
+    # "how likely is the true Sharpe positive, after accounting for how many configs were
+    # tried" — min 0.95 means "at least 95% probability", a conservative bar appropriate for
+    # a config-grid search where dozens of variants may have been tried per symbol.
+    min_deflated_sharpe_ratio: Decimal = Decimal("0.95")
+    max_probability_of_backtest_overfitting: Decimal = Decimal("0.5")
 
 
 @dataclass
@@ -57,6 +75,11 @@ class GateResult:
     mean_oos_sharpe: Optional[Decimal] = None
     worst_fold_drawdown_pct: Optional[Decimal] = None
     aggregate_net_profit: Optional[Decimal] = None
+    # Populated only by apply_overfitting_controls (None means "not yet evaluated", not
+    # "passed with no overfitting concern").
+    deflated_sharpe_ratio: Optional[Decimal] = None
+    probability_of_backtest_overfitting: Optional[Decimal] = None
+    multiple_testing_warning: Optional[str] = None
 
 
 DEFAULT_GATE = PromotionGate()
@@ -124,3 +147,84 @@ def evaluate_gate(
         worst_fold_drawdown_pct=worst_fold_drawdown_pct,
         aggregate_net_profit=aggregate_net_profit,
     )
+
+
+def apply_overfitting_controls(
+    gate_results: List[GateResult],
+    fold_sharpes_by_trial: Dict[str, List[Optional[float]]],
+    gate: PromotionGate = DEFAULT_GATE,
+) -> List[GateResult]:
+    """Second layer, downgrade-only: multiple-testing correction across every (symbol,
+    config) trial evaluated for ONE symbol in a campaign.
+
+    `gate_results`: every GateResult for that symbol (config_name identifies each trial).
+    `fold_sharpes_by_trial`: {config_name: [sharpe_fold_1, sharpe_fold_2, ...]} for the SAME
+    set of trials — the cross-trial context `evaluate_gate` itself cannot see (it only
+    receives one trial's own fold results). A missing per-fold Sharpe (no trades that fold)
+    is treated as 0.0, matching `performance_matrix_from_window_breakdowns`'s convention.
+
+    Never turns a failed base-gate result into a passed one — only ever adds a reason and/or
+    flips `passed=True` to `passed=False`.
+    """
+    n_trials = len(fold_sharpes_by_trial)
+    if n_trials == 0:
+        return gate_results
+
+    trial_mean_sharpes = []
+    for sharpes in fold_sharpes_by_trial.values():
+        observed = [v for v in sharpes if v is not None]
+        trial_mean_sharpes.append(sum(observed) / len(observed) if observed else 0.0)
+    trial_sharpe_std = pstdev(trial_mean_sharpes) if len(trial_mean_sharpes) > 1 else 1.0
+
+    multiple_testing_warning = None
+    if n_trials > 20:
+        multiple_testing_warning = (
+            f"{n_trials} configurations were compared for this symbol; results should be "
+            "treated with increased skepticism for overfitting (see docs/research/ALPHA_RESEARCH_GATE.md)."
+        )
+
+    pbo: Optional[Decimal] = None
+    try:
+        matrix = performance_matrix_from_window_breakdowns(fold_sharpes_by_trial)
+        if matrix.shape[0] >= 2 and matrix.shape[1] >= 2:
+            pbo = Decimal(str(round(compute_pbo(matrix), 6)))
+    except InsufficientDataError:
+        pbo = None  # too few trials/folds to estimate — not an error, just not computable yet
+
+    updated: List[GateResult] = []
+    for g in gate_results:
+        reasons = list(g.reasons)
+        passed = g.passed
+        dsr: Optional[Decimal] = None
+
+        if g.mean_oos_sharpe is not None and g.total_oos_trades > 1:
+            try:
+                dsr_value = deflated_sharpe_ratio(
+                    observed_sharpe=float(g.mean_oos_sharpe), n_trials=n_trials,
+                    n_observations=g.total_oos_trades, trial_sharpe_std=trial_sharpe_std,
+                )
+                dsr = Decimal(str(round(dsr_value, 6)))
+            except InsufficientDataError:
+                dsr = None
+
+        if dsr is not None and dsr < gate.min_deflated_sharpe_ratio:
+            reasons.append(f"DEFLATED_SHARPE_RATIO_BELOW_MIN:{dsr}<{gate.min_deflated_sharpe_ratio}")
+            passed = False
+
+        if pbo is not None and pbo > gate.max_probability_of_backtest_overfitting:
+            reasons.append(
+                f"PROBABILITY_OF_BACKTEST_OVERFITTING_ABOVE_MAX:{pbo}>{gate.max_probability_of_backtest_overfitting}"
+            )
+            passed = False
+
+        updated.append(
+            GateResult(
+                symbol=g.symbol, config_name=g.config_name, config_hash=g.config_hash, passed=passed,
+                reasons=reasons, total_oos_trades=g.total_oos_trades, profitable_folds=g.profitable_folds,
+                total_folds=g.total_folds, mean_oos_sharpe=g.mean_oos_sharpe,
+                worst_fold_drawdown_pct=g.worst_fold_drawdown_pct, aggregate_net_profit=g.aggregate_net_profit,
+                deflated_sharpe_ratio=dsr, probability_of_backtest_overfitting=pbo,
+                multiple_testing_warning=multiple_testing_warning,
+            )
+        )
+    return updated

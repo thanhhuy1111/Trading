@@ -323,7 +323,7 @@ def _write_candidates(results: List[Dict]) -> None:
 
 
 def _evaluate_and_write_gate(results: List[Dict]):
-    from packages.research.gate import FoldResult, PromotionGate, evaluate_gate
+    from packages.research.gate import FoldResult, PromotionGate, apply_overfitting_controls, evaluate_gate
 
     oos_rows = [r for r in results if r["run_type"] == "OOS_FOLD" and r["status"] == "OK"]
 
@@ -351,6 +351,31 @@ def _evaluate_and_write_gate(results: List[Dict]):
         config_hash = rows[0]["config_hash"]
         gate_results.append(evaluate_gate(symbol, config_name, config_hash, fold_results, gate))
 
+    # Second-layer, downgrade-only overfitting controls (Deflated Sharpe Ratio + Probability
+    # of Backtest Overfitting): every config in CONFIG_GRID is a "trial" tried against the
+    # same symbol, which is exactly the multiple-testing scenario evaluate_gate's fixed
+    # thresholds alone don't account for. Applied per symbol, since DSR/PBO compare trials
+    # against each other WITHIN a symbol, never across symbols.
+    gate_results_by_symbol: Dict[str, List] = {}
+    for g in gate_results:
+        gate_results_by_symbol.setdefault(g.symbol, []).append(g)
+
+    final_gate_results = []
+    for symbol, symbol_gate_results in gate_results_by_symbol.items():
+        fold_sharpes_by_trial: Dict[str, List[Optional[float]]] = {}
+        for (sym, config_name), rows in grouped.items():
+            if sym != symbol:
+                continue
+            by_fold = {int(r["fold_number"]): r for r in rows}
+            fold_sharpes_by_trial[config_name] = [
+                float(by_fold[n]["sharpe_ratio"]) if by_fold.get(n) and by_fold[n]["sharpe_ratio"] else None
+                for n in sorted(by_fold)
+            ]
+        final_gate_results.extend(
+            apply_overfitting_controls(symbol_gate_results, fold_sharpes_by_trial, gate)
+        )
+    gate_results = final_gate_results
+
     path = EVIDENCE_DIR / "GATE_RESULTS.csv"
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
@@ -358,12 +383,14 @@ def _evaluate_and_write_gate(results: List[Dict]):
             "symbol", "config_name", "config_hash", "passed", "reasons",
             "total_oos_trades", "profitable_folds", "total_folds",
             "mean_oos_sharpe", "worst_fold_drawdown_pct", "aggregate_net_profit",
+            "deflated_sharpe_ratio", "probability_of_backtest_overfitting", "multiple_testing_warning",
         ])
         for g in sorted(gate_results, key=lambda g: (g.config_name, g.symbol)):
             writer.writerow([
                 g.symbol, g.config_name, g.config_hash, g.passed, ";".join(g.reasons),
                 g.total_oos_trades, g.profitable_folds, g.total_folds,
                 g.mean_oos_sharpe, g.worst_fold_drawdown_pct, g.aggregate_net_profit,
+                g.deflated_sharpe_ratio, g.probability_of_backtest_overfitting, g.multiple_testing_warning or "",
             ])
     print(f"[campaign] gate evaluation written: {path} ({len(gate_results)} (symbol,config) pairs)")
     return gate_results
@@ -404,6 +431,12 @@ def _write_manifest(results, gate_results, elapsed, global_start, global_end, wo
     print(f"[campaign] manifest written: {path}")
     print(json.dumps(manifest, indent=2))
     return manifest
+
+
+def _fmt_dsr_pbo(g) -> "tuple[object, object]":
+    dsr = g.deflated_sharpe_ratio if g.deflated_sharpe_ratio is not None else "N/A"
+    pbo = g.probability_of_backtest_overfitting if g.probability_of_backtest_overfitting is not None else "N/A"
+    return dsr, pbo
 
 
 def _write_evidence(gate_results, results) -> None:
@@ -447,16 +480,21 @@ def _write_evidence(gate_results, results) -> None:
         )[:10]
         lines.append(
             "| Symbol | Config | Passed | Reasons | OOS Trades | Profitable Folds | "
-            "Mean OOS Sharpe | Worst Fold DD % | Aggregate Net PnL |"
+            "Mean OOS Sharpe | Worst Fold DD % | Aggregate Net PnL | Deflated Sharpe Ratio | PBO |"
         )
-        lines.append("|---|---|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
         for g in near:
+            dsr_str, pbo_str = _fmt_dsr_pbo(g)
             lines.append(
                 f"| {g.symbol} | {g.config_name} | {g.passed} | {'; '.join(g.reasons) or '-'} | "
                 f"{g.total_oos_trades} | {g.profitable_folds}/{g.total_folds} | {g.mean_oos_sharpe} | "
-                f"{g.worst_fold_drawdown_pct} | {g.aggregate_net_profit} |"
+                f"{g.worst_fold_drawdown_pct} | {g.aggregate_net_profit} | {dsr_str} | {pbo_str} |"
             )
         lines.append("")
+        warnings = sorted({g.multiple_testing_warning for g in gate_results if g.multiple_testing_warning})
+        for w in warnings:
+            lines.append(f"> **Multiple-testing warning:** {w}")
+            lines.append("")
     else:
         lines.append("## Result: PROMOTED CONFIGURATIONS")
         lines.append("")
@@ -473,22 +511,28 @@ def _write_evidence(gate_results, results) -> None:
             lines.append("")
             lines.append(
                 "| Symbol | Config Hash | OOS Trades | Profitable Folds | Mean OOS Sharpe | "
-                "Worst Fold DD % | Aggregate Net PnL | Reproducibility Fingerprint (fold 1) |"
+                "Worst Fold DD % | Aggregate Net PnL | Deflated Sharpe Ratio | PBO | "
+                "Reproducibility Fingerprint (fold 1) |"
             )
-            lines.append("|---|---|---|---|---|---|---|---|")
+            lines.append("|---|---|---|---|---|---|---|---|---|---|")
             for g in [g for g in passed if g.config_name == config_name]:
                 fp_row = next(
                     (r for r in results if r["config_name"] == config_name and r["symbol"] == g.symbol
                      and r["run_type"] == "OOS_FOLD" and str(r.get("fold_number")) == "1"),
                     {},
                 )
+                dsr_str, pbo_str = _fmt_dsr_pbo(g)
                 lines.append(
                     f"| {g.symbol} | `{g.config_hash[:16]}` | {g.total_oos_trades} | "
                     f"{g.profitable_folds}/{g.total_folds} | {g.mean_oos_sharpe} | "
-                    f"{g.worst_fold_drawdown_pct} | {g.aggregate_net_profit} | "
+                    f"{g.worst_fold_drawdown_pct} | {g.aggregate_net_profit} | {dsr_str} | {pbo_str} | "
                     f"`{fp_row.get('reproducibility_fingerprint', 'N/A')}` |"
                 )
             lines.append("")
+            warnings = sorted({g.multiple_testing_warning for g in gate_results if g.multiple_testing_warning})
+            for w in warnings:
+                lines.append(f"> **Multiple-testing warning:** {w}")
+                lines.append("")
 
     with open(out_path, "w") as f:
         f.write("\n".join(lines) + "\n")
