@@ -1,13 +1,8 @@
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Any, Dict, List
-from uuid import uuid4
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query
 
-from packages.execution.engine import execution_engine
 from packages.execution.simulator_adapter import simulator_exchange_adapter
-from packages.risk.models import ApprovedOrder
 
 router = APIRouter(tags=["Execution Engine & Simulator"])
 
@@ -19,22 +14,27 @@ async def list_simulated_orders() -> List[Dict[str, Any]]:
 
 
 @router.get("/execution/reports")
-async def list_execution_reports(symbol: str = Query("BTC/USDT")) -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    order = ApprovedOrder(
-        risk_decision_id=uuid4(),
-        intent_id=uuid4(),
-        exchange="binance",
-        symbol=symbol,
-        side="BUY",
-        approved_quantity=Decimal("0.192"),
-        maximum_notional=Decimal("12492.48"),
-        approved_stop_price=Decimal("63700.00"),
-        maximum_entry_price=Decimal("65065.00"),
-        maximum_entry_slippage_bps=Decimal("10.0"),
-        expires_at=now + timedelta(minutes=15),
-        status="PENDING_EXECUTION"
-    )
+async def list_execution_reports(symbol: Optional[str] = Query(None)) -> List[Dict[str, Any]]:
+    """Real order+fill summaries derived from the simulator adapter's own state.
 
-    report, fills, sim_order = await execution_engine.execute_approved_order(order, now)
-    return [report.model_dump(mode="json")]
+    NOTE: this used to fabricate a fake BUY order and actually EXECUTE it via
+    execution_engine.execute_approved_order on every GET call — a read endpoint with a real
+    side effect (it created a new simulated fill each time the dashboard polled it). Fixed to
+    be genuinely read-only: it only reports on orders/fills that have actually happened.
+    """
+    reports = []
+    for client_order_id, order in simulator_exchange_adapter.orders.items():
+        if symbol and order.symbol != symbol:
+            continue
+        fills = simulator_exchange_adapter.fills.get(client_order_id, [])
+        reports.append({
+            "client_order_id": str(client_order_id),
+            "symbol": order.symbol,
+            "status": order.status.value if hasattr(order.status, "value") else order.status,
+            "filled_quantity": str(order.filled_quantity),
+            "average_fill_price": str(order.average_fill_price) if order.average_fill_price else None,
+            "cumulative_fee": str(order.cumulative_fee),
+            "fill_count": len(fills),
+            "submitted_at": order.submitted_at.isoformat(),
+        })
+    return reports
