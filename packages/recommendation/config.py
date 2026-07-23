@@ -48,6 +48,16 @@ class RecommendationConfig(BaseSettings):
     ranker_return_normalization_bps: Decimal = Decimal("200.0")
     ranker_downside_floor: Decimal = Decimal("0.05")
 
+    # --- Strategy evidence approval policy (section 16 / 15) ---
+    # These are policy thresholds, not a guarantee of future profit -- see
+    # docs/AI_TRADING_ADVISOR_ARCHITECTURE.md.
+    evidence_min_oos_trades: int = 100
+    evidence_min_profit_factor: Decimal = Decimal("1.20")
+    evidence_min_sharpe: Decimal = Decimal("1.00")
+    evidence_max_drawdown_pct: Decimal = Decimal("20.0")
+    evidence_min_walk_forward_windows: int = 3
+    evidence_max_age_days: int = 90
+
     # --- Development-only fixture mode (section 15 / 4) ---
     # Never enable in a deployment that serves real users; fixture proposals are always
     # tagged TEST_DATA / SIMULATED / NOT_A_REAL_RECOMMENDATION and gated separately.
