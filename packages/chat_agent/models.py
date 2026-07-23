@@ -34,6 +34,10 @@ class ToolCall(BaseModel):
     call_id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
+    # Opaque, provider-specific data a provider may need echoed back on a later turn (e.g.
+    # Gemini's thought_signature -- see gemini_provider.py). Never inspected or relied upon
+    # by the orchestrator/tool_registry; other providers leave this empty.
+    provider_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolResult(BaseModel):

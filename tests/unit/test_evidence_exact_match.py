@@ -111,7 +111,15 @@ def test_rejected_and_missing_are_both_non_actionable() -> None:
 
 def test_real_campaign_evidence_builder_produces_no_universal_approvals() -> None:
     """Regression guard tied to the real campaign result: no config cleared the gate on both
-    BTC/USDT and ETH/USDT, so the evidence builder must never emit UNIVERSAL_APPROVED here."""
+    BTC/USDT and ETH/USDT, so the evidence builder must never emit UNIVERSAL_APPROVED here.
+
+    The ASSET_SPECIFIC_APPROVED count (2, not the 14 a pre-DSR/PBO campaign run once
+    produced) reflects packages.research.gate.apply_overfitting_controls being wired into
+    the campaign's gate evaluation: most of the 14 BTC/USDT-only passes from the raw
+    fixed-threshold gate are downgraded once judged against how many configs (15) were
+    actually tried on that symbol -- see docs/research/experiments/GATE_RESULTS.csv's
+    deflated_sharpe_ratio column. This is the gate becoming more conservative, not a defect.
+    """
     from pathlib import Path
 
     from packages.evidence.builder import build_evidence_records
@@ -121,5 +129,5 @@ def test_real_campaign_evidence_builder_produces_no_universal_approvals() -> Non
     assert len(records) == 30
     assert all(r.status != EvidenceStatus.UNIVERSAL_APPROVED for r in records)
     approved = [r for r in records if r.status == EvidenceStatus.ASSET_SPECIFIC_APPROVED]
-    assert len(approved) == 14
+    assert len(approved) == 2
     assert all(r.key.symbol == "BTC/USDT" for r in approved)

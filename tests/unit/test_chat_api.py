@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from apps.api.deps import get_current_principal
@@ -130,9 +131,18 @@ def test_chat_endpoint_rejects_empty_message() -> None:
         app.dependency_overrides.clear()
 
 
+def _not_configured_orchestrator() -> TradingAdvisorOrchestrator:
+    # Mirrors apps/api/routers/chat.py's real get_orchestrator() when GEMINI_API_KEY is
+    # unset -- overridden explicitly (rather than popping the dependency override and relying
+    # on the real gemini_settings singleton) so this test is hermetic: it must still pass
+    # regardless of whether a real .env with a real key happens to exist on the machine
+    # running the suite.
+    raise HTTPException(status_code=503, detail="AI Trading Advisor is not configured (GEMINI_API_KEY missing)")
+
+
 def test_chat_endpoint_returns_503_when_gemini_not_configured() -> None:
     app.dependency_overrides[get_current_principal] = _admin_principal
-    app.dependency_overrides.pop(get_orchestrator, None)
+    app.dependency_overrides[get_orchestrator] = _not_configured_orchestrator
     try:
         with TestClient(app) as client:
             response = client.post("/api/v1/chat", json={"message": "Bây giờ tôi có thể đặt lệnh nào?"})

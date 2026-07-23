@@ -6,13 +6,16 @@ matches this project's async-first stack) with `automatic_function_calling` disa
 tool execution is entirely owned by packages/chat_agent/orchestrator.py so every call
 goes through the allowlist, timeouts, and audit logging there, never inside the SDK.
 
-NOTE: this path has not been exercised against the live Gemini API in this environment
-(no GEMINI_API_KEY was available). It is built directly against the installed
-google-genai==2.14.0 SDK's introspected type signatures. Treat it as unverified until an
-opt-in live smoke test (see docs/AI_TRADING_ADVISOR_TESTING.md) has been run.
+Verified live 2026-07-24: models with thinking enabled (this project's default
+GEMINI_THINKING_LEVEL) return a `thought_signature` on each function-call `Part`, and
+reject a follow-up request that replays that function call without echoing the same
+signature back (400 INVALID_ARGUMENT: "Function call is missing a thought_signature").
+`_parse_response` captures it into `ToolCall.provider_metadata` and `_to_contents` replays
+it -- see https://ai.google.dev/gemini-api/docs/thought-signatures.
 """
 
 import asyncio
+import base64
 from typing import Any, Dict, List, Optional
 
 from google import genai
@@ -68,10 +71,18 @@ class GeminiProvider(LLMProvider):
             elif entry.role == TranscriptEntryRole.ASSISTANT and entry.text:
                 contents.append(types.Content(role="model", parts=[types.Part(text=entry.text)]))
             elif entry.role == TranscriptEntryRole.TOOL_CALL:
-                parts = [
-                    types.Part(function_call=types.FunctionCall(id=c.call_id, name=c.name, args=c.arguments))
-                    for c in entry.tool_calls
-                ]
+                parts = []
+                for c in entry.tool_calls:
+                    thought_signature: Optional[bytes] = None
+                    raw_signature = c.provider_metadata.get("thought_signature_b64")
+                    if raw_signature:
+                        thought_signature = base64.b64decode(raw_signature)
+                    parts.append(
+                        types.Part(
+                            function_call=types.FunctionCall(id=c.call_id, name=c.name, args=c.arguments),
+                            thought_signature=thought_signature,
+                        )
+                    )
                 if parts:
                     contents.append(types.Content(role="model", parts=parts))
             elif entry.role == TranscriptEntryRole.TOOL_RESULT and entry.tool_result:
@@ -112,7 +123,17 @@ class GeminiProvider(LLMProvider):
                     fc = part.function_call
                     assert fc.name is not None
                     call_id = fc.id or fc.name
-                    tool_calls.append(ToolCall(call_id=call_id, name=fc.name, arguments=dict(fc.args or {})))
+                    provider_metadata: Dict[str, Any] = {}
+                    if part.thought_signature:
+                        provider_metadata["thought_signature_b64"] = base64.b64encode(
+                            part.thought_signature
+                        ).decode("ascii")
+                    tool_calls.append(
+                        ToolCall(
+                            call_id=call_id, name=fc.name, arguments=dict(fc.args or {}),
+                            provider_metadata=provider_metadata,
+                        )
+                    )
 
         if tool_calls:
             return AgentProviderResult(
