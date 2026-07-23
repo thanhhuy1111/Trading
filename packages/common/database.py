@@ -1,7 +1,22 @@
-from typing import Any, Dict
+from typing import Any, AsyncIterator, Dict
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.common.config import settings
 from packages.common.logger import logger
+
+_engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+_session_factory = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+async def get_session() -> AsyncIterator[AsyncSession]:
+    """FastAPI/application dependency yielding a scoped AsyncSession.
+
+    The caller owns the transaction boundary (commit/rollback) — this dependency only
+    guarantees the session is closed afterwards.
+    """
+    async with _session_factory() as session:
+        yield session
 
 
 async def check_postgres_health() -> Dict[str, Any]:
