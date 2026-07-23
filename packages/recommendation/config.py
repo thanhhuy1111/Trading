@@ -33,6 +33,9 @@ class RecommendationConfig(BaseSettings):
     max_market_data_staleness_seconds: int = 90
     max_spread_bps: Decimal = Decimal("15.0")
     min_liquidity_score: Decimal = Decimal("0.40")
+    liquidity_target_notional_usd: Decimal = Decimal("50000.0")
+    order_book_depth_levels: int = 20
+    candle_lookback_periods: int = 300
 
     # --- Proposal shape ---
     max_proposals: int = 3
