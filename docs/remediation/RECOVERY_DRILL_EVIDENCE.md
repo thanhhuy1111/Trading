@@ -1,34 +1,28 @@
 # RECOVERY DRILL EVIDENCE (F-04)
 
-| Finding | Implementation | Unit evidence | Integration evidence | Runtime evidence | Status |
-|---|---|---|---|---|---|
-| F-04 | NOT implemented this pass | — | NONE | NONE | **OPEN (infra-blocked)** |
+| Aspect | Implementation | Unit evidence | Integration evidence | Status |
+|---|---|---|---|---|
+| Reconciliation logic | `packages/persistence/reconciliation.py` | `tests/unit/test_recovery_reconciliation.py` (5) | none | RESOLVED_VERIFIED (logic only) |
+| Durable persistence + restart drill | schema/migration 013 + `unit_of_work.py` authored | schema/orchestration unit tests | none (no PostgreSQL) | IMPLEMENTED_NOT_VERIFIED |
+| Process-restart equality drill | integration skeleton (skipped) | — | NOT RUN | OPEN |
 
-## Why this is OPEN, not verified
-Real restart recovery requires durable state in PostgreSQL (orders, fills, ledger entries,
-positions, risk state, processed-candle high-water mark) plus a migration and DB-backed
-idempotency. This environment has:
-- no `docker` / `docker compose`,
-- no Postgres **client or driver** (`psql`, `asyncpg`, `psycopg2` all missing),
-- no `alembic`,
-- no Redis (port 6379 refused).
+## Verified this round (pure logic, no DB)
+`reconcile_session(...)` derives cash and asset quantities from ledger rows and compares them to
+materialized state:
+- clean state → `passed=True` → `recovery_status == "READY"`;
+- cash imbalance → `CASH_IMBALANCE` → `RECOVERY_REQUIRED`;
+- ledger row referencing a non-persisted fill → `UNLINKED_LEDGER_ENTRY`;
+- position quantity mismatch → `POSITION_MISMATCH`;
+- negative derived cash → `NEGATIVE_CASH`.
 
-A Postgres server is listening on `:5432`, but with no driver/client and unknown ownership it
-**must not** be used — running migrations against an unknown/possibly-production database is
-explicitly forbidden this round. No disposable Postgres could be provisioned (no server binaries).
+This is the decision core the recovery service will use: only promote `RECOVERY_REQUIRED → READY`
+when reconciliation passes, else stay `RECOVERY_REQUIRED` + incident.
 
-Per this round's §9 and §15, without disposable Postgres/Redis the durable-recovery gates
-cannot be run, F-04 cannot be marked verified, and the final decision stays **C**. Fabricating a
-recovery pass with an in-memory/SQLite substitute is explicitly disallowed, so it was not done.
-
-## What remains to close F-04 (next round, with a DB)
-1. New Alembic migration for the persistence tables + unique constraints (`fill_id`;
-   `session_id+client_order_id`; `session_id+symbol+timeframe+close_time`; `decision_id`;
-   `ledger_entry_id`) with `upgrade`/`downgrade` and an upgrade/downgrade/upgrade cycle.
-2. Repository + transaction-orchestration layer: one fill → (fill, ledger entries, position,
-   PnL bucket, risk state, journal, outbox) committed atomically or rolled back.
-3. `recover_session`: load committed state, reconcile `NAV = cash + Σ(qty × mark)`, verify no
-   unlinked fills / ledger imbalance / unknown orders, rebuild runtime context, and only then
-   `RECOVERY_REQUIRED → READY`; otherwise stay `RECOVERY_REQUIRED` + incident.
-4. Fault-injection + process-restart integration tests on a disposable Postgres proving no
-   duplicate fill, no double fee/position, and identical pre/post-restart state.
+## NOT verified (infra-blocked)
+The end-to-end restart drill (§13 of the round spec) — persist a fill, destroy the runtime,
+recreate it, recover, replay the same candle/order/fill, and assert
+`snapshot_before == snapshot_after` with zero duplicate fills/ledger/cash/position/PnL deltas —
+requires a disposable PostgreSQL, which is absent (no docker/initdb/psql; `:5432` off-limits).
+It is encoded as skipped tests in `tests/integration/test_paper_durable_persistence.py`
+(`test_restart_restores_exact_state`, `test_pnl_buckets_survive_restart`, …) and must be run on
+real PostgreSQL before F-04 can be marked verified. Until then the decision stays **C**.

@@ -4,45 +4,43 @@
 ```
 C — NOT READY FOR PAPER TRADING
 ```
-Real progress was made on the runtime/state theme, but the round's own rule is explicit:
-without disposable Postgres/Redis runtime evidence the decision must remain **C**, and F-03/F-04
-may not be marked verified. That infrastructure is absent here.
+Round 3 built the durable-persistence foundation and verified its DESIGN and LOGIC, but the
+round's own rule (§19) is explicit: *"Nếu persistence chỉ được viết nhưng chưa chạy trên
+PostgreSQL: C."* No PostgreSQL server was available, so the migration cycle, integration drills,
+and restart recovery could not run. Decision stays **C**.
 
-## Why not B (minimum-condition checklist for this round)
-| Minimum condition for B | Met? |
+## Why not B (this round's B checklist)
+| Condition for B | Met? |
 |---|---|
-| Closed candles automatically enter the paper pipeline | ⚠️ worker logic verified with a fake stream; no live feed / route wiring (F-02 PARTIAL) |
-| No global accounting singleton in the runtime | ⚠️ paper + backtest exits are session-scoped; global singleton still exists for legacy/default (F-03 PARTIAL) |
-| State persisted in PostgreSQL | ❌ not implemented — no DB (F-04) |
-| DB-backed idempotency | ❌ in-memory only (F-04) |
-| Restart recovery passes | ❌ recovery still a stub; not runnable (F-04) |
-| Session isolation passes | ⚠️ in-memory only, not durable/cross-process (F-03) |
-| Daily/weekly risk buckets pass | ✅ (in-memory, unit-verified) |
-| Backtest uses DecisionService | ✅ |
-| Integration tests pass | ❌ NOT RUN (no Postgres/Redis) |
-| Migration cycle passes | ❌ NOT RUN (no alembic/DB) |
+| PostgreSQL migration cycle | ❌ NOT RUN (no server); offline `--sql` only |
+| PostgreSQL integration tests | ❌ NOT RUN (skipped skeleton) |
+| Atomic fill transaction | ⚠️ LOGIC verified (fake txn); PostgreSQL NOT verified |
+| DB-backed order/fill/candle idempotency | ⚠️ constraints defined + logic verified; PostgreSQL NOT verified |
+| Durable session isolation | ❌ schema ready; PostgreSQL drill NOT RUN |
+| Process restart recovery | ⚠️ reconciliation logic verified; end-to-end drill NOT RUN |
+| PnL buckets survive restart | ❌ durable schema ready; NOT RUN |
+| Ingestion resumes safely | ❌ NOT RUN |
+| No CRITICAL/HIGH durability finding remains | ❌ F-04 durability still unverified |
 
-Multiple ❌ (all rooted in absent DB/infra) ⇒ **C**.
+## Genuinely delivered this round (design/logic verified, no DB)
+- Durable `paper_*` schema + Alembic migration `013` (head); DDL compiles for postgres; offline `--sql` upgrade/downgrade validated.
+- Idempotency unique constraints on candle key, `(session_id, client_order_id)`, `fill_id`, position, PnL bucket.
+- `FillCommitOrchestrator`: single-transaction step order, rollback-on-failure (no partial commit), duplicate→idempotent (no double mutation) — unit-verified via a fake transaction.
+- `reconcile_session`: derives cash/positions from the ledger and flags imbalance / unlinked fill / position mismatch / negative cash — unit-verified.
+- 150 unit tests pass (round-2: 137 → +13); ruff clean; frontend builds.
 
-## What genuinely improved this round (VERIFIED at unit level)
-- Backtest now runs the **same** DecisionService as paper (F-01 fully closed for mechanics); a rise-then-fall backtest opens and exits a real round-trip.
-- Realized-PnL risk limits are UTC-day / ISO-week windowed by fill event time (F-05) — yesterday's loss no longer counts today.
-- Paper sessions own isolated in-memory ledgers; exit paths (`ExitProtector`, `exit_governor`) are session-scoped, not global (F-03 in-memory).
-- A closed-candle ingestion worker with dedup / out-of-order / gap→DEGRADED→backfill / clock-skew / clean-cancel semantics (F-02 logic), proven to block entries while DEGRADED.
+## Distinctions
+- **RESOLVED_VERIFIED (logic/design):** fill-commit orchestration, idempotency branching, reconciliation, schema DDL/constraints, offline migration SQL.
+- **IMPLEMENTED_NOT_VERIFIED (needs PostgreSQL):** the SQLAlchemy binding of the orchestrator to real tables, the online migration cycle, durable isolation, restart recovery, durable PnL buckets, DB candle dedup.
+- **OPEN:** wiring the runtime to make PostgreSQL the source of truth; F-07/F-10/F-11/F-12.
 
-## Distinctions (Implemented / Verified / Runtime-proven / Operationally-proven)
-- **RESOLVED_VERIFIED (unit):** F-01, F-05, F-08, F-09, F-13, F-14.
-- **PARTIAL:** F-02 (worker logic only), F-03 (in-memory only), F-06.
-- **OPEN / infra-blocked:** F-04 (durable persistence + recovery), integration/migration/docker gates.
-- **Not operationally proven:** live feed, restart durability, 30-day continuous run, profitability.
-
-## Top blockers to reach B (next round, requires a disposable Postgres + Redis)
-1. Durable persistence layer + Alembic migration + DB-backed idempotency (F-04).
-2. Real restart recovery with reconciliation (F-04).
-3. Connect the ingestion worker to a live public feed + DB-backed dedup, and wire `start_runtime` (F-02).
-4. Promote F-03 isolation to durable per-session persistence.
-5. Run integration + migration + docker gates as evidence.
+## The single blocker to B
+A disposable PostgreSQL (ideally via the repo's `docker compose`, or a throwaway local DB with a
+dedicated test database). With it, the next round runs: alembic cycle, the `SqlAlchemyFillTxnOps`
+binding, and the integration drills in `tests/integration/test_paper_durable_persistence.py`
+(gated by `PAPER_DB_TEST_URL`).
 
 ## Safety
-Live-trading boundary unchanged and intact: `LIVE_TRADING_ENABLED=false`, no private API, no
-credentials, no LLM in the decision path. All data paths remain public + paper simulator.
+Unchanged and intact: `LIVE_TRADING_ENABLED=false`, `PRIVATE_EXCHANGE_API_ENABLED=false`,
+`FEATURE_FLAGS_LIVE_TRADING=false`. No private API, no credentials, no live adapter, no LLM in the
+decision path. The unknown `:5432` server was deliberately never touched.

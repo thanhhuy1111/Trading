@@ -34,7 +34,15 @@ Ledger cash: 93948.00  | NAV=99993.95
 - **Session isolation (in-memory):** two sessions keep independent cash/positions/NAV; exit paths write to the session manager, not the global singleton (`test_session_isolation_inmemory`).
 - **Risk windows:** realized PnL is bucketed by UTC day / ISO week from fill event time (`test_risk_pnl_windows`).
 
+## Round 3 note (durable persistence)
+The durable persistence layer (schema/migration 013, atomic fill-commit orchestration, DB
+idempotency, recovery reconciliation) was implemented and verified at the DESIGN/LOGIC level only
+(DDL compiles for postgres; offline `alembic --sql`; orchestration + reconciliation unit tests).
+It was **NOT executed against PostgreSQL** (no server) and is **not yet wired as the runtime
+source of truth** — the live paper pipeline still uses in-memory state. See
+DATABASE_TRANSACTION_EVIDENCE.md, DB_IDEMPOTENCY_EVIDENCE.md, RECOVERY_DRILL_EVIDENCE.md.
+
 ## What is NOT yet runtime-proven
 - No **live** market-data feed; the worker was verified only with a fake in-process stream (F-02 PARTIAL).
-- No database: persistence, DB-backed idempotency, and restart recovery are not implemented/verified (F-04 OPEN); isolation and PnL buckets are in-memory only.
-- Integration / migration / docker gates were not run (infra absent). See REMAINING_LIMITATIONS.md.
+- No database RUN: persistence, DB-backed idempotency, and restart recovery are IMPLEMENTED_NOT_VERIFIED on PostgreSQL (F-04); runtime isolation and PnL buckets are still in-memory.
+- Integration / online-migration / docker gates were not run (infra absent). See REMAINING_LIMITATIONS.md.

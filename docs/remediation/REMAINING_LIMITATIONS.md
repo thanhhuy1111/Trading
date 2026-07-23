@@ -1,6 +1,18 @@
 # REMAINING LIMITATIONS (nothing hidden)
 
-## Environment blockers (root cause of the C decision this round)
+## Round 3 update
+Durable persistence was **implemented and design/logic-verified** (schema, migration 013, atomic
+fill-commit orchestration, DB idempotency constraints, recovery reconciliation) but **NOT run on
+PostgreSQL** — no server is available (`asyncpg`/`alembic`/`psycopg2` were installed, but there is
+no Docker/initdb/psql and the `:5432` server is unknown-ownership and off-limits). Therefore
+F-02/F-03/F-04/F-05 durability remains **IMPLEMENTED_NOT_VERIFIED / OPEN**, and the runtime paper
+pipeline still uses in-memory state (the DB layer is additive, not yet the source of truth). No
+SQLite/in-memory substitute was used to claim PostgreSQL verification. Decision stays **C**.
+
+The single blocker to B is a disposable PostgreSQL to run: the alembic cycle, the SQLAlchemy
+`FillTxnOps` binding, and the skipped integration drills (`PAPER_DB_TEST_URL`).
+
+## Environment blockers (root cause of the C decision)
 - **No Docker / docker compose.**
 - **No Postgres client or driver** (`psql`, `asyncpg`, `psycopg2` all missing). A server is on
   `:5432` but is unusable and of unknown ownership — using/migrating it is forbidden.

@@ -1,32 +1,32 @@
 # TEST EVIDENCE
 
-Environment: Python 3.10.10 (project targets 3.12 — unavailable). `mypy`, `alembic`,
-`asyncpg`/`psycopg2`, Redis, Docker all ABSENT. Postgres on :5432 present but unusable
-(no driver/client) and must not be touched.
+Environment: Python 3.10.10 (target 3.12). Installed this round (declared deps): `asyncpg 0.31.0`,
+`alembic`, `psycopg2`. Still absent: Docker, PostgreSQL server, Redis, `mypy`.
 
-## Round 2 gate results
+## Round 3 gate results
 | Command | Exit | Result | Notes |
 |---|---|---|---|
 | `python3 -m ruff check .` | 0 | **PASS** | clean |
-| `python3 -m pytest tests/unit -q` | 0 | **PASS** | **137 passed** (round-1: 118; +19 this round) |
-| `cd apps/dashboard && npm run build` | 0 | **PASS** | tsc + vite (~0.6s), no regression |
-| `python3 -m pytest tests/integration -v` | — | **NOT RUN** | needs Postgres/Redis |
+| `python3 -m pytest tests/unit -q` | 0 | **PASS** | **150 passed** (round-2: 137; +13 this round) |
+| `python3 -m pytest tests/integration/test_paper_durable_persistence.py` | 0 | **8 skipped** | needs `PAPER_DB_TEST_URL` (no PostgreSQL) |
+| `alembic history` / `heads` | 0 | **PASS** | `013` is head, chain intact |
+| `alembic upgrade 012:013 --sql` / `downgrade 013:012 --sql` | 0 | **PASS** | offline DDL for all 7 tables + constraints + indexes |
+| `alembic upgrade head` (online) | — | **NOT RUN** | no PostgreSQL server |
+| `python3 -m pytest tests/integration` (full) | — | **NOT RUN** | needs Postgres/Redis |
 | `mypy .` | — | **NOT RUN** | not installed |
-| `alembic upgrade/downgrade/upgrade` | — | **NOT RUN** | alembic absent / no usable DB; no new migrations added |
-| `docker compose config` / `build` / `up` | — | **NOT RUN** | docker absent |
+| `cd apps/dashboard && npm run build` | 0 | **PASS** | no regression |
 
-## New tests this round (all pass)
-- `tests/unit/test_paper_ingestion_worker.py` (8): open ignored, dedup, out-of-order, gap→backfill→RUNNING, unrecoverable gap→RECOVERY_REQUIRED, clock-skew degrade, clean start/stop, DEGRADED-blocks-entry vs RUNNING-opens-entry.
-- `tests/unit/test_session_isolation_inmemory.py` (3): two-session independent cash/positions/NAV, per-session ledgers via paper pipeline, ExitProtector writes to injected manager not global.
-- `tests/unit/test_risk_pnl_windows.py` (5): daily/weekly reset, late fill to past bucket, timezone-independent bucketing, independent per-manager buckets.
-- `tests/unit/test_backtest_decision_wiring.py` (3): engine source uses decision_service (no fabrication), decision determinism/fingerprint stability, rise-then-fall backtest opens+exits a real round-trip.
+## New tests this round (all pass; no DB required)
+- `tests/unit/test_persistence_schema.py` (4): postgres-dialect DDL compiles; idempotency unique constraints present; candle unique key columns; expected indexes present.
+- `tests/unit/test_fill_commit_orchestration.py` (4): happy-path step order + commit; fast-path idempotent; mid-transaction failure → rollback, no commit; duplicate `fill_id` IntegrityError → idempotent, no double commit.
+- `tests/unit/test_recovery_reconciliation.py` (5): clean → READY; cash imbalance; unlinked ledger entry; position mismatch; negative cash → RECOVERY_REQUIRED.
+- `tests/integration/test_paper_durable_persistence.py` (8, **skipped**): migration cycle, atomic fill, fill retry idempotent, concurrent-fill-one-commit, candle DB dedup, durable isolation, restart restores state, PnL buckets survive restart.
 
-No previously-passing test regressed (118 → 137).
+No previously-passing test regressed (137 → 150).
 
-## Test matrix coverage (honest)
-- Ingestion (open/closed/dedup/out-of-order/gap→DEGRADED/DEGRADED-blocks-entry/backfill→RUNNING/clean-cancel): ✅ unit (fake stream). Reconnect-no-duplicate ✅ (dedup + seq). Live feed ❌.
-- Session isolation (A cash⟂B, positions⟂, exit⟂, independent NAV): ✅ in-memory. Cross-process ❌.
-- Persistence (fill+ledger+position one transaction; rollback; unique constraints; concurrent dedup): ❌ NOT RUN (no DB) — F-04 OPEN.
-- Recovery (restart restores state; replay no-op; corrupt→RECOVERY_REQUIRED): ❌ NOT RUN (no DB) — F-04 OPEN.
-- PnL windows (UTC midnight / ISO week / late event / restart / isolation / hard-stop): ✅ except "restart" (needs persistence).
-- Shared pipeline (paper uses DecisionService; backtest uses DecisionService; no fabricated intent; same-input same-fingerprint): ✅.
+## Requested test matrix coverage (honest)
+- Migration cycle: ⚠️ offline SQL only; online NOT RUN.
+- Atomic fill / rollback: ✅ logic (fake txn); PostgreSQL ❌.
+- DB candle / order / fill idempotency: ✅ constraints + logic; PostgreSQL ❌.
+- Concurrent duplicate: ✅ IntegrityError branch (simulated); real race ❌.
+- Durable session isolation / process restart / PnL bucket restart / ingestion resume: ❌ NOT RUN (no PostgreSQL).
