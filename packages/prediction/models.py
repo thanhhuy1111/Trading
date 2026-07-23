@@ -45,8 +45,13 @@ class ModelPrediction(BaseModel):
     feature_snapshot_id: str
     generated_at: datetime
 
+    meta_label_accepted: bool = True
     reason_codes: list[str] = Field(default_factory=list)
 
     @property
     def is_usable(self) -> bool:
-        return self.calibration_status == CalibrationStatus.CALIBRATED and self.probability_profit is not None
+        return (
+            self.calibration_status == CalibrationStatus.CALIBRATED
+            and self.probability_profit is not None
+            and self.meta_label_accepted
+        )
