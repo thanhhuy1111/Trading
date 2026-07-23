@@ -38,6 +38,13 @@ dev = [
     "ruff>=0.4.0",
     "hypothesis>=6.103.0"
 ]
+# Training-time only (packages/research). Never imported by runtime inference code in
+# packages/prediction -- see packages/prediction/direction_model.py module docstring.
+research = [
+    "scikit-learn>=1.4.0,<2.0.0",
+    "pyarrow>=15.0.0",
+    "pyyaml>=6.0.0"
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
