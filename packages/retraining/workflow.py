@@ -16,9 +16,14 @@ this task") - `tests/unit/test_retraining_workflow.py` only asserts the workflow
 end-to-end and produces a well-formed, RESEARCH_ONLY-only result, never a specific accuracy
 number.
 
-Labels are intentionally forward-looking (next-bar return sign) - that is what a supervised
-label IS. This is distinct from and does not violate rule 4's "no future-derived FEATURES":
-the feature vector for bar i only ever reads candles up to and including bar i.
+Labels are cost-aware triple-barrier labels (Lopez de Prado): for bar i, walk forward up to
+`LABEL_HORIZON_BARS` candles looking for whichever of an upper profit-take barrier, a lower
+stop-loss barrier, or the time barrier is touched first, using the real
+`packages.governance.cost_estimator` fee+spread+slippage model so a barrier touch that is
+gross-profitable but net-unprofitable after costs is correctly labeled 0, not 1. This is
+forward-looking by construction -- that is what a supervised label IS -- and does not violate
+rule 4's "no future-derived FEATURES": the feature vector for bar i only ever reads candles up
+to and including bar i; only `_build_feature_label_rows`'s LABEL half looks forward.
 """
 
 import hashlib
@@ -26,6 +31,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -35,17 +41,29 @@ from packages.evidence.models import EvidenceKey, EvidenceRecord, EvidenceStatus
 from packages.evidence.store import EvidenceStore
 from packages.features.models import FeatureComputationRequest
 from packages.features.pipeline import feature_pipeline
+from packages.governance.cost_estimator import cost_estimator
 from packages.market_data.models import Candle, Timeframe
 from packages.registries.models import RegistryEntry
 from packages.registries.registry import ArtifactRegistry
+from packages.retraining.calibration import fit_platt_scaling
 
 FEATURE_VERSION = "standard_v1"
+# Must match packages.intelligence.meta_label.LABEL_VERSION exactly: that module's
+# LogisticRegressionMetaLabelService always stamps ModelPrediction.label_version from its
+# own constant at inference time, regardless of which labeling methodology actually produced
+# the training data (label_version identifies the meta-label inference contract shape here,
+# not the labeling algorithm) -- BaselineRecommendationService builds its EvidenceKey lookup
+# from that inference-time value, so a mismatch here would make evidence unfindable forever.
 LABEL_VERSION = "meta_label_v1"
 FEATURE_NAMES = ["rsi_14"]
 FEATURE_LOOKBACK_WINDOW = 60
 MIN_LOOKBACK_BARS = 15  # rsi_14 needs period(14)+1
 MAX_TRAINING_ITERATIONS = 200  # bounded - no large hyperparameter search
 DEFAULT_LEARNING_RATE = 0.1
+LABEL_HORIZON_BARS = 10  # bar-count based (not wall-clock) so this works for any Timeframe
+LABEL_UPPER_BARRIER_PCT = Decimal("0.015")
+LABEL_LOWER_BARRIER_PCT = Decimal("0.015")
+BPS = Decimal("10000")
 
 
 @dataclass
@@ -147,9 +165,14 @@ class RetrainingWorkflow:
         validation_accuracy = _accuracy(coefficients, intercept, val_rows)
         stages.append("VALIDATED")
 
-        # Stage 8: calibration - identity (no Platt fit) in this baseline; documented as such,
-        # not a claim of a calibrated model.
-        calibration = None
+        # Stage 8: calibration - real Platt scaling fit on the VALIDATION split only (never
+        # test). Returns None (honest, not fabricated) if the validation split doesn't have
+        # both outcome classes present to fit against.
+        val_raw_probabilities = [
+            _sigmoid(intercept + sum(c * f for c, f in zip(coefficients, row.features, strict=True)))
+            for row in val_rows
+        ]
+        calibration = fit_platt_scaling(val_raw_probabilities, [row.label for row in val_rows])
         stages.append("CALIBRATED")
 
         # Stage 9: test.
@@ -231,13 +254,51 @@ def _interval_hours(candles: List[Candle]) -> float:
     return (candles[1].close_time - candles[0].close_time).total_seconds() / 3600.0
 
 
+def _triple_barrier_label(candles: List[Candle], idx: int, symbol: str) -> Optional[int]:
+    """Cost-aware triple-barrier label for the bar at `idx` (Lopez de Prado): walks forward
+    up to LABEL_HORIZON_BARS candles for whichever of an upper/lower/time barrier is touched
+    first. Returns 1 only for a genuine net-of-cost profitable upper-barrier touch, 0 for a
+    lower-barrier touch or a timeout, and None if there isn't enough forward history yet to
+    know the true outcome (never guessed)."""
+    current = candles[idx]
+    forward = candles[idx + 1: idx + 1 + LABEL_HORIZON_BARS]
+    if len(forward) < LABEL_HORIZON_BARS:
+        return None
+
+    entry_price = current.close_price
+    upper_barrier = entry_price * (Decimal("1") + LABEL_UPPER_BARRIER_PCT)
+    lower_barrier = entry_price * (Decimal("1") - LABEL_LOWER_BARRIER_PCT)
+    cost_bps = cost_estimator.estimate_cost(symbol).total_cost_bps
+
+    exit_price: Optional[Decimal] = None
+    touched_upper = False
+    for c in forward:
+        if c.low_price <= lower_barrier:
+            exit_price = lower_barrier
+            touched_upper = False
+            break
+        if c.high_price >= upper_barrier:
+            exit_price = upper_barrier
+            touched_upper = True
+            break
+    else:
+        exit_price = forward[-1].close_price
+        touched_upper = False
+
+    net_return_bps = (exit_price - entry_price) / entry_price * BPS - cost_bps
+    return 1 if (touched_upper and net_return_bps > 0) else 0
+
+
 def _build_feature_label_rows(candles: List[Candle], symbol: str, timeframe: Timeframe) -> List[_Row]:
     rows: List[_Row] = []
-    for idx in range(MIN_LOOKBACK_BARS, len(candles) - 1):  # -1: need a next bar for the label
+    for idx in range(MIN_LOOKBACK_BARS, len(candles) - 1):
+        label = _triple_barrier_label(candles, idx, symbol)
+        if label is None:
+            continue  # not enough forward history yet - never guessed
+
         window_start = max(0, idx + 1 - FEATURE_LOOKBACK_WINDOW)
         buffer = candles[window_start: idx + 1]
         current = candles[idx]
-        next_candle = candles[idx + 1]
 
         feature_req = FeatureComputationRequest(
             exchange="binance", symbol=symbol, timeframe=timeframe,
@@ -248,7 +309,6 @@ def _build_feature_label_rows(candles: List[Candle], symbol: str, timeframe: Tim
         if any(v is None for v in raw_values):
             continue  # honest skip - never impute a missing feature for training either
         features = [float(v) for v in raw_values]  # type: ignore[arg-type]
-        label = 1 if next_candle.close_price > current.close_price else 0
         rows.append(_Row(timestamp=current.close_time, features=features, label=label))
     return rows
 

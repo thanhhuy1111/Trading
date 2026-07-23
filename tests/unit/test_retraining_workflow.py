@@ -14,7 +14,12 @@ from packages.evidence.models import EvidenceStatus
 from packages.evidence.store import EvidenceStore
 from packages.market_data.models import Candle, Timeframe
 from packages.registries.registry import ArtifactRegistry, InvalidStatusTransitionError
-from packages.retraining.workflow import RetrainingWorkflow, rollback_model_version
+from packages.retraining.workflow import (
+    LABEL_HORIZON_BARS,
+    RetrainingWorkflow,
+    _triple_barrier_label,
+    rollback_model_version,
+)
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 SYMBOL = "BTC/USDT"
@@ -119,3 +124,67 @@ async def test_rollback_disables_a_research_only_model_and_requires_an_actor() -
 
     with pytest.raises(InvalidStatusTransitionError):
         rollback_model_version(model_registry, entry_name, result.model_version, actor="anyone", reason="again")
+
+
+# --------------------------------------------------------------------------------------
+# cost-aware triple-barrier labeling (_triple_barrier_label)
+# --------------------------------------------------------------------------------------
+
+
+def _flat_candles_with_path(entry_price: Decimal, path: List[Decimal], n_before: int = 5) -> List[Candle]:
+    """`n_before` flat lead-in candles (so idx has a real "current" bar) followed by one
+    candle per `path` price -- close_price drives the barrier walk, high/low give it a
+    small +-5 wick so only a deliberate path crosses a barrier."""
+    candles = []
+    for i in range(n_before):
+        ct = T0 + timedelta(hours=i)
+        candles.append(Candle(
+            exchange="binance", symbol=SYMBOL, exchange_timestamp=ct, open_time=ct,
+            close_time=ct + timedelta(minutes=59, seconds=59), timeframe=Timeframe.H1,
+            open_price=entry_price, high_price=entry_price + Decimal("5"), low_price=entry_price - Decimal("5"),
+            close_price=entry_price, volume=Decimal("10"), is_closed=True,
+        ))
+    for j, price in enumerate(path):
+        ct = T0 + timedelta(hours=n_before + j)
+        candles.append(Candle(
+            exchange="binance", symbol=SYMBOL, exchange_timestamp=ct, open_time=ct,
+            close_time=ct + timedelta(minutes=59, seconds=59), timeframe=Timeframe.H1,
+            open_price=price, high_price=price + Decimal("5"), low_price=price - Decimal("5"),
+            close_price=price, volume=Decimal("10"), is_closed=True,
+        ))
+    return candles
+
+
+def test_triple_barrier_label_is_one_for_a_genuine_net_profitable_upper_touch():
+    entry = Decimal("50000")
+    # +3% on bar 1 of the horizon -- clears the 1.5% upper barrier net of realistic costs.
+    path = [entry * Decimal("1.03")] + [entry * Decimal("1.03")] * (LABEL_HORIZON_BARS - 1)
+    candles = _flat_candles_with_path(entry, path)
+    idx = 4  # the last flat lead-in candle, i.e. "now"
+    label = _triple_barrier_label(candles, idx, SYMBOL)
+    assert label == 1
+
+
+def test_triple_barrier_label_is_zero_for_a_lower_barrier_touch():
+    entry = Decimal("50000")
+    path = [entry * Decimal("0.97")] * LABEL_HORIZON_BARS
+    candles = _flat_candles_with_path(entry, path)
+    label = _triple_barrier_label(candles, 4, SYMBOL)
+    assert label == 0
+
+
+def test_triple_barrier_label_is_zero_for_a_timeout_with_no_barrier_touch():
+    entry = Decimal("50000")
+    # Drifts up by well under 1.5% over the whole horizon -- never touches either barrier.
+    path = [entry + Decimal("10") * (j + 1) for j in range(LABEL_HORIZON_BARS)]
+    candles = _flat_candles_with_path(entry, path)
+    label = _triple_barrier_label(candles, 4, SYMBOL)
+    assert label == 0
+
+
+def test_triple_barrier_label_is_none_without_enough_forward_history():
+    entry = Decimal("50000")
+    path = [entry * Decimal("1.03")] * (LABEL_HORIZON_BARS - 1)  # one bar short of the horizon
+    candles = _flat_candles_with_path(entry, path)
+    label = _triple_barrier_label(candles, 4, SYMBOL)
+    assert label is None
