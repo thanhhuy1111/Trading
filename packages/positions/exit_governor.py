@@ -12,13 +12,16 @@ class ExitRiskValidator:
     def validate_exit_intent(
         self,
         intent: PositionExitIntent,
-        current_time: Optional[datetime] = None
+        current_time: Optional[datetime] = None,
+        owner_position_manager: Optional[object] = None
     ) -> Tuple[Optional[ApprovedExitOrder], str]:
 
         if current_time is None:
             current_time = datetime.now(timezone.utc)
 
-        pos = position_manager.positions.get(intent.symbol)
+        # F-03: validate against the session-scoped manager when provided (legacy global otherwise).
+        mgr = owner_position_manager if owner_position_manager is not None else position_manager
+        pos = mgr.positions.get(intent.symbol)
         if not pos or pos.status == "CLOSED":
             logger.error("Exit intent rejected: position closed or missing", extra={"symbol": intent.symbol})
             return None, "POSITION_CLOSED_OR_MISSING"

@@ -108,7 +108,9 @@ class PaperPipeline:
                 pos, candle.close_price, candle.close_time, owner_position_manager=pos_mgr
             )
             if intent:
-                approved_exit, app_status = exit_risk_validator.validate_exit_intent(intent, candle.close_time)
+                approved_exit, app_status = exit_risk_validator.validate_exit_intent(
+                    intent, candle.close_time, owner_position_manager=pos_mgr
+                )
                 if approved_exit and app_status == "APPROVED":
                     req = ExchangeOrderRequest(
                         approved_order_id=approved_exit.approved_exit_order_id,

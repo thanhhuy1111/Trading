@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
+import asyncio
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List
 from uuid import UUID, uuid4
 
-from packages.agents.models import MarketRegime
 from packages.backtest.clock import ReplayClock
 from packages.backtest.datasets import dataset_registry
 from packages.backtest.metrics import metrics_engine
@@ -17,7 +17,7 @@ from packages.backtest.models import (
 from packages.backtest.reproducibility import reproducibility_verifier
 from packages.common.logger import logger
 from packages.execution.models import Fill, LiquidityType
-from packages.governance.models import IntentSide, TradeIntent
+from packages.governance.decision_service import decision_service
 from packages.market_data.guardian import data_guardian
 from packages.positions.exit_governor import exit_risk_validator
 from packages.positions.exit_protector import ExitProtector
@@ -112,9 +112,13 @@ class EventDrivenBacktestEngine:
             # 2. Check Exit Protection for existing position
             pos = pos_mgr.positions.get(active_symbol)
             if pos and pos.status != "CLOSED":
-                intent, pos = exit_prot.evaluate_position_exit(pos, candle.close_price, candle.close_time)
+                intent, pos = exit_prot.evaluate_position_exit(
+                    pos, candle.close_price, candle.close_time, owner_position_manager=pos_mgr
+                )
                 if intent:
-                    approved_exit, app_status = exit_risk_validator.validate_exit_intent(intent, candle.close_time)
+                    approved_exit, app_status = exit_risk_validator.validate_exit_intent(
+                        intent, candle.close_time, owner_position_manager=pos_mgr
+                    )
                     if approved_exit and app_status == "APPROVED":
                         # Simulated Exit Order Execution
                         exit_price = candle.close_price * Decimal("0.999") # 10 bps slippage
@@ -163,73 +167,60 @@ class EventDrivenBacktestEngine:
             snap = pos_mgr.get_portfolio_snapshot(candle.close_time)
             equity_curve.append(snap.nav)
 
-            # 3. Strategy Signals (only if no open position and NO_SAME_BAR_FILL)
+            # 3. Strategy & governance — SAME DecisionService as paper trading (no fabrication).
             if not pos or pos.status == "CLOSED":
-                # Simulated Trend Strategy Signal Generator
-                if idx >= 5:
-                    prev_close = all_candles[idx - 5].close_price
-                    if candle.close_price > prev_close * Decimal("1.01"): # 1% uptrend rule
-                        # Generate TradeIntent
-                        intent = TradeIntent(
-                            intent_id=uuid4(),
+                buffer = all_candles[:idx + 1]  # closed candles with close_time <= current bar
+                decision = asyncio.run(
+                    decision_service.decide(
+                        exchange="binance",
+                        symbol=active_symbol,
+                        timeframe=candle.timeframe,
+                        candles=buffer,
+                        as_of_time=candle.close_time,
+                        reference_price=candle.close_price,
+                    )
+                )
+                intent = decision.trade_intent
+                if intent is not None:
+                    # Risk Governor Evaluation
+                    risk_snap = pos_mgr.get_risk_governor_snapshot(candle.close_time)
+                    risk_decision, approved = deterministic_risk_governor.evaluate_intent(
+                        intent=intent,
+                        snapshot=risk_snap,
+                        current_time=candle.close_time
+                    )
+
+                    # BUY execution at NEXT event open (NO_SAME_BAR_FILL by default)
+                    if (
+                        risk_decision.result == "APPROVED"
+                        and approved
+                        and config.liquidity_config.same_bar_fill_allowed is False
+                        and idx + 1 < len(all_candles)
+                    ):
+                        next_candle = all_candles[idx + 1]
+                        # slippage vs next open, capped at the risk-approved maximum entry price
+                        raw_fill = next_candle.open_price * Decimal("1.0005")
+                        fill_price = min(raw_fill, approved.maximum_entry_price)
+                        fill_qty = approved.approved_quantity
+                        quote_qty = fill_qty * fill_price
+                        fee = quote_qty * Decimal("0.001")  # 10 bps fee
+
+                        buy_fill = Fill(
+                            exchange_fill_id=f"FILL_BUY_{uuid4().hex[:8]}",
+                            exchange_order_id=approved.approved_order_id,
+                            client_order_id=approved.client_order_id,
                             symbol=active_symbol,
-                            exchange="binance",
-                            side=IntentSide.BUY,
-                            strategy_ids=["TREND_FOLLOWING_V1"],
-                            source_signal_ids=[uuid4()],
-                            critic_decision_ids=[uuid4()],
-                            consensus_id=uuid4(),
-                            market_regime=MarketRegime.TREND_UP,
-                            expected_return_bps=Decimal("150.0"),
-                            weighted_confidence=Decimal("0.85"),
-                            estimated_fee_bps=Decimal("10.0"),
-                            estimated_spread_bps=Decimal("5.0"),
-                            estimated_slippage_bps=Decimal("5.0"),
-                            uncertainty_buffer_bps=Decimal("10.0"),
-                            net_edge_bps=Decimal("120.0"),
-                            reference_price=candle.close_price,
-                            suggested_stop_price=candle.close_price * Decimal("0.98"),
-                            suggested_take_profit_price=candle.close_price * Decimal("1.05"),
-                            horizon_minutes=60,
-                            feature_as_of_time=candle.close_time,
-                            generated_at=candle.close_time,
-                            expires_at=candle.close_time + timedelta(minutes=15)
+                            side="BUY",
+                            quantity=fill_qty,
+                            price=fill_price,
+                            quote_quantity=quote_qty,
+                            fee=fee,
+                            fee_asset="USDT",
+                            liquidity=LiquidityType.TAKER,
+                            executed_at=next_candle.close_time
                         )
 
-                        # Risk Governor Evaluation
-                        risk_snap = pos_mgr.get_risk_governor_snapshot(candle.close_time)
-                        decision, approved = deterministic_risk_governor.evaluate_intent(
-                            intent=intent,
-                            snapshot=risk_snap,
-                            current_time=candle.close_time
-                        )
-
-                        if decision.result == "APPROVED" and approved:
-
-                            # Simulated BUY execution at NEXT event (NO_SAME_BAR_FILL)
-                            if config.liquidity_config.same_bar_fill_allowed is False and idx + 1 < len(all_candles):
-                                next_candle = all_candles[idx + 1]
-                                fill_price = next_candle.open_price * Decimal("1.0005") # 5 bps slippage
-                                fill_qty = approved.approved_quantity
-                                quote_qty = fill_qty * fill_price
-                                fee = quote_qty * Decimal("0.001") # 10 bps fee
-
-                                buy_fill = Fill(
-                                    exchange_fill_id=f"FILL_BUY_{uuid4().hex[:8]}",
-                                    exchange_order_id=approved.approved_order_id,
-                                    client_order_id=approved.client_order_id,
-                                    symbol=active_symbol,
-                                    side="BUY",
-                                    quantity=fill_qty,
-                                    price=fill_price,
-                                    quote_quantity=quote_qty,
-                                    fee=fee,
-                                    fee_asset="USDT",
-                                    liquidity=LiquidityType.TAKER,
-                                    executed_at=next_candle.close_time
-                                )
-
-                                pos_mgr.process_fill(buy_fill, next_candle.close_time)
+                        pos_mgr.process_fill(buy_fill, next_candle.close_time)
 
         # Compute Final Backtest Metrics
         final_nav = equity_curve[-1] if equity_curve else config.initial_cash
