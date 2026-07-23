@@ -15,6 +15,7 @@ from packages.paper.models import PaperSessionStatus
 from packages.paper.session import paper_session_manager
 from packages.positions.exit_governor import exit_risk_validator
 from packages.positions.exit_protector import ExitProtector
+from packages.positions.ledger import PortfolioLedger
 from packages.positions.manager import PositionManager
 from packages.risk.governor import deterministic_risk_governor
 
@@ -40,7 +41,13 @@ class PaperPipeline:
 
     def get_position_manager(self, session_id: UUID) -> PositionManager:
         if session_id not in self.position_managers:
-            self.position_managers[session_id] = PositionManager(account_id=f"PAPER_ACCT_{session_id.hex[:8]}")
+            sess = paper_session_manager.sessions.get(session_id)
+            initial_cash = sess.initial_cash if sess else Decimal("100000.00")
+            # F-03: each session owns an isolated ledger seeded from its own initial cash.
+            self.position_managers[session_id] = PositionManager(
+                account_id=f"PAPER_ACCT_{session_id.hex[:8]}",
+                ledger=PortfolioLedger(initial_cash=initial_cash, account_id=f"PAPER_ACCT_{session_id.hex[:8]}"),
+            )
         return self.position_managers[session_id]
 
     def get_exit_protector(self, session_id: UUID) -> ExitProtector:

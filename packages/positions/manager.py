@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Optional, Tuple
 
 from packages.execution.models import Fill
-from packages.positions.ledger import portfolio_ledger
+from packages.positions.ledger import PortfolioLedger, portfolio_ledger
 from packages.positions.models import (
     PortfolioSnapshot,
     Position,
@@ -17,12 +17,47 @@ from packages.risk.models import PortfolioRiskSnapshot, PositionRiskView
 class PositionManager:
     """Position Manager tracking open positions, cost basis, valuation, and snapshots."""
 
-    def __init__(self, account_id: str = "SIM_ACCOUNT_001") -> None:
+    def __init__(self, account_id: str = "SIM_ACCOUNT_001", ledger: Optional[PortfolioLedger] = None) -> None:
         self.account_id = account_id
+        # F-03: a session may inject its own ledger for full isolation. When none is given we
+        # fall back to the module-global ledger (legacy / default behaviour, unchanged).
+        if ledger is None:
+            self.ledger = portfolio_ledger
+            self.equity_peak = Decimal("100000.00")
+        else:
+            self.ledger = ledger
+            self.equity_peak = ledger.cash_balance
         self.positions: Dict[str, Position] = {}
-        self.equity_peak = Decimal("100000.00")
-        self.total_realized_pnl_today = Decimal("0.0")
-        self.total_realized_pnl_week = Decimal("0.0")
+        # F-05: realized PnL is tracked in time-bucketed windows (UTC day / ISO week),
+        # never as a lifetime-cumulative counter.
+        self.realized_pnl_buckets: Dict[Tuple[str, str], Decimal] = {}
+        self.realized_fee_buckets: Dict[Tuple[str, str], Decimal] = {}
+
+    @staticmethod
+    def _utc_day_key(dt: datetime) -> str:
+        d = dt.astimezone(timezone.utc)
+        return datetime(d.year, d.month, d.day, tzinfo=timezone.utc).isoformat()
+
+    @staticmethod
+    def _iso_week_key(dt: datetime) -> str:
+        d = dt.astimezone(timezone.utc)
+        monday = datetime(d.year, d.month, d.day, tzinfo=timezone.utc) - timedelta(days=d.weekday())
+        return monday.isoformat()
+
+    def _record_realized_pnl(self, pnl: Decimal, fee: Decimal, event_time: datetime) -> None:
+        dkey = ("DAILY", self._utc_day_key(event_time))
+        wkey = ("WEEKLY", self._iso_week_key(event_time))
+        self.realized_pnl_buckets[dkey] = self.realized_pnl_buckets.get(dkey, Decimal("0.0")) + pnl
+        self.realized_pnl_buckets[wkey] = self.realized_pnl_buckets.get(wkey, Decimal("0.0")) + pnl
+        self.realized_fee_buckets[dkey] = self.realized_fee_buckets.get(dkey, Decimal("0.0")) + fee
+        self.realized_fee_buckets[wkey] = self.realized_fee_buckets.get(wkey, Decimal("0.0")) + fee
+
+    def realized_pnl_window(self, bucket_type: str, at_time: datetime) -> Decimal:
+        if bucket_type == "DAILY":
+            key = ("DAILY", self._utc_day_key(at_time))
+        else:
+            key = ("WEEKLY", self._iso_week_key(at_time))
+        return self.realized_pnl_buckets.get(key, Decimal("0.0"))
 
     def process_fill(
         self,
@@ -36,12 +71,12 @@ class PositionManager:
         pos = self.positions.get(fill.symbol)
         avg_entry = pos.average_entry_price if pos else Decimal("0.0")
 
-        # 1. Update Portfolio Ledger
-        entries, pnl_entry = portfolio_ledger.process_fill(fill, current_time, avg_entry)
+        # 1. Update Portfolio Ledger (session-scoped)
+        entries, pnl_entry = self.ledger.process_fill(fill, current_time, avg_entry)
 
         if pnl_entry:
-            self.total_realized_pnl_today += pnl_entry.realized_pnl
-            self.total_realized_pnl_week += pnl_entry.realized_pnl
+            # F-05: bucket realized PnL by the fill's event time (UTC day / ISO week)
+            self._record_realized_pnl(pnl_entry.realized_pnl, pnl_entry.exit_fee, fill.executed_at)
 
         if fill.side == "BUY":
             if not pos or pos.status == PositionStatus.CLOSED:
@@ -154,7 +189,7 @@ class PositionManager:
 
         active_positions = [p for p in self.positions.values() if p.status != PositionStatus.CLOSED]
         asset_mkt_val = sum((p.market_value for p in active_positions if p.market_value), Decimal("0.0"))
-        nav = portfolio_ledger.cash_balance + asset_mkt_val
+        nav = self.ledger.cash_balance + asset_mkt_val
 
         if nav > self.equity_peak:
             self.equity_peak = nav
@@ -184,15 +219,15 @@ class PositionManager:
 
         return PortfolioSnapshot(
             account_id=self.account_id,
-            cash_balance=portfolio_ledger.cash_balance,
-            available_cash=portfolio_ledger.available_cash,
+            cash_balance=self.ledger.cash_balance,
+            available_cash=self.ledger.available_cash,
             asset_market_value=asset_mkt_val,
             nav=nav,
             gross_exposure=asset_mkt_val,
             net_exposure=asset_mkt_val,
             open_risk_amount=Decimal("0.0"),
-            realized_pnl_today=self.total_realized_pnl_today,
-            realized_pnl_week=self.total_realized_pnl_week,
+            realized_pnl_today=self.realized_pnl_window("DAILY", current_time),
+            realized_pnl_week=self.realized_pnl_window("WEEKLY", current_time),
             unrealized_pnl=sum((p.unrealized_pnl for p in active_positions), Decimal("0.0")),
             total_fees=sum((p.total_fees for p in self.positions.values()), Decimal("0.0")),
             equity_peak=self.equity_peak,
@@ -229,4 +264,4 @@ class PositionManager:
         )
 
 
-position_manager = PositionManager()
+position_manager = PositionManager(ledger=portfolio_ledger)
