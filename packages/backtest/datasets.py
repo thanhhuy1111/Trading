@@ -1,9 +1,10 @@
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from packages.backtest.models import DatasetQualityStatus, HistoricalDatasetDefinition
+from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
 from packages.market_data.models import Candle
 
 
@@ -59,6 +60,21 @@ class DatasetRegistry:
                 prev = sorted_candles[i - 1]
                 if c.close_time < prev.close_time:
                     raise ValueError("DATASET_QUALITY_ERROR: Candles out of temporal order")
+
+        # Real gap detection (previously always 0, regardless of actual spacing). Only computed
+        # for single-timeframe datasets — every dataset registered by this codebase's callers
+        # is single-timeframe in practice, and mixing intervals has no single "expected
+        # spacing" to gap-check against.
+        distinct_timeframes = {c.timeframe for c in sorted_candles}
+        if len(distinct_timeframes) == 1:
+            interval = TIMEFRAME_INTERVAL.get(next(iter(distinct_timeframes)))
+            if interval is not None:
+                for prev, cur in zip(sorted_candles, sorted_candles[1:], strict=False):
+                    spacing = cur.close_time - prev.close_time
+                    if spacing > interval and spacing % interval == timedelta(0):
+                        missing = int(spacing / interval) - 1
+                        if missing > 0:
+                            gap_count += missing
 
         quality = DatasetQualityStatus.VALIDATED
         if duplicate_count > 0 or gap_count > 0:
