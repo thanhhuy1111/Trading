@@ -1,0 +1,167 @@
+{
+  "generated_at": "2026-07-23T14:54:42.978791+00:00",
+  "results": [
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "1h",
+      "total_clean_candles": 35758,
+      "valid_decision_points": 35480,
+      "dropped_by_gap_policy": 250,
+      "dropped_by_stale_policy": 25,
+      "regime_distribution": {
+        "SIDEWAYS": 19081,
+        "TREND_UP": 8247,
+        "TREND_DOWN": 8152
+      },
+      "routed_agent_execution_count": 35480,
+      "candidate_count": 9327,
+      "completed_label_count": 9324,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 75.39
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "1h",
+      "total_clean_candles": 35758,
+      "valid_decision_points": 35480,
+      "dropped_by_gap_policy": 250,
+      "dropped_by_stale_policy": 25,
+      "regime_distribution": {
+        "SIDEWAYS": 17128,
+        "TREND_UP": 9033,
+        "TREND_DOWN": 9319
+      },
+      "routed_agent_execution_count": 35480,
+      "candidate_count": 9942,
+      "completed_label_count": 9940,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 80.55
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "1h",
+      "total_clean_candles": 35758,
+      "valid_decision_points": 35480,
+      "dropped_by_gap_policy": 250,
+      "dropped_by_stale_policy": 25,
+      "regime_distribution": {
+        "TREND_DOWN": 8520,
+        "SIDEWAYS": 18664,
+        "TREND_UP": 8296
+      },
+      "routed_agent_execution_count": 35480,
+      "candidate_count": 9262,
+      "completed_label_count": 9261,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 84.73
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "1h",
+      "total_clean_candles": 35758,
+      "valid_decision_points": 35480,
+      "dropped_by_gap_policy": 250,
+      "dropped_by_stale_policy": 25,
+      "regime_distribution": {
+        "SIDEWAYS": 15513,
+        "TREND_DOWN": 10252,
+        "TREND_UP": 9682,
+        "HIGH_VOLATILITY": 33
+      },
+      "routed_agent_execution_count": 35480,
+      "candidate_count": 10451,
+      "completed_label_count": 10450,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 79.96
+    },
+    {
+      "symbol": "BTC/USDT",
+      "timeframe": "4h",
+      "total_clean_candles": 11129,
+      "valid_decision_points": 11101,
+      "dropped_by_gap_policy": 0,
+      "dropped_by_stale_policy": 0,
+      "regime_distribution": {
+        "TREND_UP": 3173,
+        "SIDEWAYS": 4890,
+        "TREND_DOWN": 3038
+      },
+      "routed_agent_execution_count": 11101,
+      "candidate_count": 3399,
+      "completed_label_count": 3395,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 26.14
+    },
+    {
+      "symbol": "ETH/USDT",
+      "timeframe": "4h",
+      "total_clean_candles": 11129,
+      "valid_decision_points": 11101,
+      "dropped_by_gap_policy": 0,
+      "dropped_by_stale_policy": 0,
+      "regime_distribution": {
+        "TREND_UP": 3278,
+        "SIDEWAYS": 4661,
+        "TREND_DOWN": 3162
+      },
+      "routed_agent_execution_count": 11101,
+      "candidate_count": 3451,
+      "completed_label_count": 3439,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 26.35
+    },
+    {
+      "symbol": "BNB/USDT",
+      "timeframe": "4h",
+      "total_clean_candles": 11129,
+      "valid_decision_points": 11101,
+      "dropped_by_gap_policy": 0,
+      "dropped_by_stale_policy": 0,
+      "regime_distribution": {
+        "TREND_UP": 3124,
+        "SIDEWAYS": 4888,
+        "TREND_DOWN": 3089
+      },
+      "routed_agent_execution_count": 11101,
+      "candidate_count": 3330,
+      "completed_label_count": 3329,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 26.58
+    },
+    {
+      "symbol": "SOL/USDT",
+      "timeframe": "4h",
+      "total_clean_candles": 11129,
+      "valid_decision_points": 11101,
+      "dropped_by_gap_policy": 0,
+      "dropped_by_stale_policy": 0,
+      "regime_distribution": {
+        "TREND_UP": 3229,
+        "SIDEWAYS": 4391,
+        "TREND_DOWN": 3372,
+        "HIGH_VOLATILITY": 109
+      },
+      "routed_agent_execution_count": 11101,
+      "candidate_count": 3403,
+      "completed_label_count": 3395,
+      "duplicate_candidate_count": 0,
+      "lineage_violation_count": 0,
+      "leakage_violation_count": 0,
+      "elapsed_seconds": 23.06
+    }
+  ]
+}
