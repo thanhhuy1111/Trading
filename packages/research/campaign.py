@@ -47,6 +47,44 @@ INITIAL_CASH = Decimal("100000.00")
 RANDOM_SEED = 42
 
 
+def _candidate_to_row(candidate, task: Dict, session_id) -> Dict:
+    """Flattens a TradeCandidate into a CSV-safe row, tagged with the experiment it came
+    from so trade-level records can always be traced back to (symbol, config, fold)."""
+    return {
+        "session_id": str(session_id),
+        "symbol": task["symbol"],
+        "config_name": task["config_name"],
+        "run_type": task["run_type"],
+        "fold_number": task.get("fold_number") or "",
+        "candidate_id": str(candidate.candidate_id),
+        "status": candidate.status.value,
+        "decision_timestamp": candidate.decision_timestamp.isoformat(),
+        "agent_source": candidate.agent_source,
+        "agent_confidence": str(candidate.agent_confidence),
+        "supporting_agents": "|".join(candidate.supporting_agents),
+        "opposing_agents": "|".join(candidate.opposing_agents),
+        "consensus_score": str(candidate.consensus_score),
+        "market_regime": candidate.market_regime,
+        "entry_reference": str(candidate.entry_reference),
+        "actual_entry_price": str(candidate.actual_entry_price) if candidate.actual_entry_price is not None else "",
+        "stop_loss": str(candidate.stop_loss) if candidate.stop_loss is not None else "",
+        "take_profit": str(candidate.take_profit) if candidate.take_profit is not None else "",
+        "risk_reward_ratio": str(candidate.risk_reward_ratio) if candidate.risk_reward_ratio is not None else "",
+        "estimated_fee_bps": str(candidate.estimated_fee_bps),
+        "estimated_spread_bps": str(candidate.estimated_spread_bps),
+        "estimated_slippage_bps": str(candidate.estimated_slippage_bps),
+        "risk_rejection_reasons": "|".join(candidate.risk_rejection_reasons),
+        "exit_timestamp": candidate.exit_timestamp.isoformat() if candidate.exit_timestamp else "",
+        "exit_price": str(candidate.exit_price) if candidate.exit_price is not None else "",
+        "exit_reason": candidate.exit_reason or "",
+        "gross_return_bps": str(candidate.gross_return_bps) if candidate.gross_return_bps is not None else "",
+        "total_cost_bps": str(candidate.total_cost_bps) if candidate.total_cost_bps is not None else "",
+        "net_return_bps": str(candidate.net_return_bps) if candidate.net_return_bps is not None else "",
+        "meta_label": candidate.meta_label or "",
+        "strategy_config_hash": candidate.strategy_config_hash,
+    }
+
+
 def _run_single_experiment(task: Dict) -> Dict:
     """Runs exactly one backtest session. Must stay import-light and self-contained so it
     pickles cleanly for ProcessPoolExecutor. Any failure is captured and returned as a row
@@ -60,6 +98,7 @@ def _run_single_experiment(task: Dict) -> Dict:
     result = dict(task)
     result["status"] = "ERROR"
     result["error"] = ""
+    result["candidates"] = []
 
     try:
         symbol = task["symbol"]
@@ -83,9 +122,12 @@ def _run_single_experiment(task: Dict) -> Dict:
         )
 
         strategy_config = build_strategy_config(task["overrides"])
+        fold_number = task.get("fold_number") or None
+        if fold_number is not None:
+            fold_number = int(fold_number)
 
         cfg = BacktestConfig(
-            session_name=f"CAMPAIGN_{task['config_name']}_{symbol}_{task['run_type']}",
+            session_name=task["config_name"],
             mode=BacktestMode.HISTORICAL_REPLAY,
             dataset_id=dataset.dataset_id,
             symbols=[symbol],
@@ -96,11 +138,14 @@ def _run_single_experiment(task: Dict) -> Dict:
             initial_cash=INITIAL_CASH,
             random_seed=RANDOM_SEED,
             strategy_config=strategy_config,
+            fold_number=fold_number,
         )
 
         engine = EventDrivenBacktestEngine()
         session = engine.create_session(cfg)
         report = engine.run_backtest(session.session_id)
+        candidates = engine.get_candidates(session.session_id)
+        result["candidates"] = [_candidate_to_row(c, task, session.session_id) for c in candidates]
 
         m = report.metrics
         result.update({
@@ -231,6 +276,7 @@ def run_campaign(max_workers: Optional[int] = None) -> Dict:
     print(f"[campaign] all {len(results)} experiments completed in {elapsed:.1f}s")
 
     _write_ledger(results)
+    _write_candidates(results)
     gate_results = _evaluate_and_write_gate(results)
     manifest = _write_manifest(results, gate_results, elapsed, global_start, global_end, worker_count)
     _write_evidence(gate_results, results)
@@ -253,6 +299,25 @@ def _write_ledger(results: List[Dict]) -> None:
         for row in sorted(results, key=lambda r: (r["symbol"], r["config_name"], r["run_type"], str(r["fold_number"]))):
             writer.writerow(row)
     print(f"[campaign] full experiment ledger written: {path} ({len(results)} rows)")
+
+
+def _write_candidates(results: List[Dict]) -> None:
+    path = EVIDENCE_DIR / "CANDIDATES.csv"
+    fieldnames = [
+        "session_id", "symbol", "config_name", "run_type", "fold_number", "candidate_id", "status",
+        "decision_timestamp", "agent_source", "agent_confidence", "supporting_agents", "opposing_agents",
+        "consensus_score", "market_regime", "entry_reference", "actual_entry_price", "stop_loss",
+        "take_profit", "risk_reward_ratio", "estimated_fee_bps", "estimated_spread_bps",
+        "estimated_slippage_bps", "risk_rejection_reasons", "exit_timestamp", "exit_price", "exit_reason",
+        "gross_return_bps", "total_cost_bps", "net_return_bps", "meta_label", "strategy_config_hash",
+    ]
+    all_rows = [row for r in results for row in r.get("candidates", [])]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in sorted(all_rows, key=lambda r: (r["symbol"], r["config_name"], r["run_type"], str(r["fold_number"]), r["decision_timestamp"])):
+            writer.writerow(row)
+    print(f"[campaign] full candidate lineage written: {path} ({len(all_rows)} rows)")
 
 
 def _evaluate_and_write_gate(results: List[Dict]):

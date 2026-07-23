@@ -1,6 +1,6 @@
 # Full Alpha Research Campaign — Evidence Report
 
-_Generated: 2026-07-23T13:02:52.867901+00:00 | git: 1169172b96d58ebeff8558af2a1e16250d544930_
+_Generated: 2026-07-23T13:35:45.515168+00:00 | git: e223ac4563e55cbda15b26ea5023a3c6c0f47728_
 
 This report is generated exclusively from real out-of-sample walk-forward results produced by `packages/research/campaign.py` running the production `EventDrivenBacktestEngine`. See `docs/research/ALPHA_RESEARCH_GATE.md` for the exact promotion-gate criteria and `docs/research/experiments/` for the full, unfiltered experiment ledger (every run, pass or fail).
 
