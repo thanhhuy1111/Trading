@@ -45,15 +45,14 @@ _reversion_agent = MeanReversionAgent()
 _breakout_agent = BreakoutAgent()
 
 
-async def _single_agent_long_decision(
-    agent,
+def _build_context_and_regime(
     candles_window: List[Candle],
     exchange: str,
     symbol: str,
     timeframe: Timeframe,
     as_of_time: datetime,
     reference_price,
-) -> bool:
+) -> AgentEvaluationContext:
     request = FeatureComputationRequest(
         exchange=exchange, symbol=symbol, timeframe=timeframe, feature_set="standard_v1", as_of_time=as_of_time
     )
@@ -64,11 +63,14 @@ async def _single_agent_long_decision(
         reference_price=reference_price, strategy_config=default_strategy_config,
     )
     regime = _regime_agent.classify_regime(probe_ctx)
-    ctx = AgentEvaluationContext(
+    return AgentEvaluationContext(
         exchange=exchange, symbol=symbol, timeframe=timeframe, as_of_time=as_of_time,
         feature_snapshot=snapshot, market_regime=regime, data_quality_status="HEALTHY",
         reference_price=reference_price, strategy_config=default_strategy_config,
     )
+
+
+async def _single_agent_long_decision(agent, ctx: AgentEvaluationContext) -> bool:
     signal = await agent.evaluate(ctx)
     return signal.action == SignalAction.LONG
 
@@ -95,14 +97,17 @@ async def compute_baseline_decisions(
     symbol: str,
     timeframe: Timeframe,
     lookback_window: int = 300,
-) -> Dict[datetime, Dict[str, bool]]:
-    """Returns {entry_open_time: {baseline_name: decision}}. One decision per entry point
-    (not per horizon) -- horizons share the same entry-time decision, computed once.
+) -> Dict[datetime, Dict[str, object]]:
+    """Returns {entry_open_time: {baseline_name: decision, "market_regime": str}}. One
+    decision per entry point (not per horizon) -- horizons share the same entry-time
+    decision, computed once. `market_regime` is the SAME MarketRegimeAgent classification
+    used to build each agent's context, exposed here so evaluation can break results down
+    by regime without a second classification pass.
     """
     sorted_candles = sorted(candles, key=lambda c: c.open_time)
     index_by_open_time = {c.open_time: i for i, c in enumerate(sorted_candles)}
 
-    decisions: Dict[datetime, Dict[str, bool]] = {}
+    decisions: Dict[datetime, Dict[str, object]] = {}
     for entry_open_time in entry_open_times:
         idx = index_by_open_time.get(entry_open_time)
         if idx is None:
@@ -113,15 +118,11 @@ async def compute_baseline_decisions(
         window_start = max(0, idx + 1 - lookback_window)
         window = sorted_candles[window_start : idx + 1]
 
-        trend_long = await _single_agent_long_decision(
-            _trend_agent, window, exchange, symbol, timeframe, as_of_time, reference_price
-        )
-        reversion_long = await _single_agent_long_decision(
-            _reversion_agent, window, exchange, symbol, timeframe, as_of_time, reference_price
-        )
-        breakout_long = await _single_agent_long_decision(
-            _breakout_agent, window, exchange, symbol, timeframe, as_of_time, reference_price
-        )
+        ctx = _build_context_and_regime(window, exchange, symbol, timeframe, as_of_time, reference_price)
+
+        trend_long = await _single_agent_long_decision(_trend_agent, ctx)
+        reversion_long = await _single_agent_long_decision(_reversion_agent, ctx)
+        breakout_long = await _single_agent_long_decision(_breakout_agent, ctx)
         multi_agent_long = await _multi_agent_long_decision(
             window, exchange, symbol, timeframe, as_of_time, reference_price
         )
@@ -133,6 +134,7 @@ async def compute_baseline_decisions(
             "MEAN_REVERSION_ONLY": reversion_long,
             "BREAKOUT_ONLY": breakout_long,
             "MULTI_AGENT_NO_ML": multi_agent_long,
+            "market_regime": ctx.market_regime.value,
         }
     return decisions
 
@@ -143,10 +145,12 @@ def attach_baseline_decisions(
     exchange: str = "binance",
     lookback_window: int = 300,
 ) -> pd.DataFrame:
-    """Adds one boolean `baseline__{NAME}` column per baseline to a COPY of label_table."""
+    """Adds one boolean `baseline__{NAME}` column per baseline, plus `market_regime`, to a
+    COPY of label_table."""
     out = label_table.copy()
     for name in BASELINE_NAMES:
         out[f"baseline__{name}"] = False
+    out["market_regime"] = None
     if out.empty:
         return out
 
@@ -170,4 +174,5 @@ def attach_baseline_decisions(
                 continue
             for name in BASELINE_NAMES:
                 out.at[idx, f"baseline__{name}"] = row_decisions[name]
+            out.at[idx, "market_regime"] = row_decisions["market_regime"]
     return out
