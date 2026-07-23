@@ -97,6 +97,9 @@ class BacktestConfig(BaseModel):
     # configs must yield distinct config_checksum fingerprints (see ReproducibilityVerifier)
     # so research-campaign experiments are individually reproducible and auditable.
     strategy_config: StrategyConfig = Field(default_factory=lambda: default_strategy_config)
+    # Optional walk-forward fold label, purely for lineage/reporting (TradeCandidate.fold_number).
+    # Has no effect on replay behaviour.
+    fold_number: Optional[int] = None
     random_seed: int = 42
     enable_stop_loss: bool = True
     enable_take_profit: bool = True

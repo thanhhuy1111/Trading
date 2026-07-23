@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
 from packages.backtest.clock import ReplayClock
@@ -15,6 +15,8 @@ from packages.backtest.models import (
     TradeEpisode,
 )
 from packages.backtest.reproducibility import reproducibility_verifier
+from packages.candidates.builder import build_proposed_candidate
+from packages.candidates.models import CandidateStatus, TradeCandidate
 from packages.common.logger import logger
 from packages.execution.models import Fill, LiquidityType
 from packages.governance.decision_service import decision_service
@@ -40,6 +42,12 @@ class EventDrivenBacktestEngine:
     def __init__(self) -> None:
         self.active_sessions: Dict[UUID, BacktestSession] = {}
         self.session_configs: Dict[UUID, BacktestConfig] = {}
+        self.session_candidates: Dict[UUID, List[TradeCandidate]] = {}
+
+    def get_candidates(self, session_id: UUID) -> List[TradeCandidate]:
+        """Full TradeCandidate lineage for a completed session — every proposed trade,
+        whether risk-rejected, approved-but-unfilled, or filled and (if closed) its outcome."""
+        return self.session_candidates.get(session_id, [])
 
     def create_session(self, config: BacktestConfig) -> BacktestSession:
         dataset = dataset_registry.get_dataset(config.dataset_id)
@@ -104,6 +112,10 @@ class EventDrivenBacktestEngine:
 
         episodes: List[TradeEpisode] = []
         equity_curve: List[Decimal] = []
+        candidates: List[TradeCandidate] = []
+        # At most one open position per symbol (maximum_positions=1), so a single pending
+        # slot is sufficient to link a later exit fill back to the candidate that opened it.
+        pending_candidate: Optional[TradeCandidate] = None
 
         # Filter candles for warmup and active backtest range
         all_candles = sorted(candles, key=lambda c: c.close_time)
@@ -164,6 +176,10 @@ class EventDrivenBacktestEngine:
 
                         pos_mgr.process_fill(sell_fill, candle.close_time)
 
+                        entry_notional = approved_exit.approved_quantity * pos.average_entry_price
+                        gross_pnl = quote_qty - entry_notional
+                        net_pnl = quote_qty - fee - entry_notional
+
                         # Record Trade Episode
                         episodes.append(
                             TradeEpisode(
@@ -176,13 +192,31 @@ class EventDrivenBacktestEngine:
                                 exit_quantity=approved_exit.approved_quantity,
                                 average_entry_price=pos.average_entry_price,
                                 average_exit_price=exit_price,
-                                gross_pnl=quote_qty - (approved_exit.approved_quantity * pos.average_entry_price),
+                                gross_pnl=gross_pnl,
                                 fees=fee,
                                 slippage_cost=Decimal("0.0"),
-                                net_pnl=quote_qty - fee - (approved_exit.approved_quantity * pos.average_entry_price),
+                                net_pnl=net_pnl,
                                 exit_reason=intent.trigger_type
                             )
                         )
+
+                        # Finalize the candidate lineage entry that opened this position, if any
+                        # (a position can predate candidate tracking only at the very first bar
+                        # of a resumed/checkpointed session, which this engine does not support).
+                        if pending_candidate is not None and entry_notional > Decimal("0"):
+                            pending_candidate.status = CandidateStatus.CLOSED
+                            pending_candidate.exit_timestamp = candle.close_time
+                            pending_candidate.exit_price = exit_price
+                            pending_candidate.gross_return_bps = (gross_pnl / entry_notional) * Decimal("10000")
+                            pending_candidate.total_cost_bps = (fee / entry_notional) * Decimal("10000")
+                            pending_candidate.net_return_bps = (net_pnl / entry_notional) * Decimal("10000")
+                            pending_candidate.exit_reason = intent.trigger_type.value if hasattr(
+                                intent.trigger_type, "value"
+                            ) else str(intent.trigger_type)
+                            pending_candidate.label_end_timestamp = candle.close_time
+                            pending_candidate.meta_label = "ACCEPT" if net_pnl > Decimal("0") else "REJECT"
+                            candidates.append(pending_candidate)
+                            pending_candidate = None
 
             # Update mark price & NAV
             pos_mgr.update_mark_price(active_symbol, candle.close_price, candle.close_time)
@@ -206,6 +240,14 @@ class EventDrivenBacktestEngine:
                 )
                 intent = decision.trade_intent
                 if intent is not None:
+                    candidate = build_proposed_candidate(
+                        decision=decision,
+                        session_id=session.session_id,
+                        strategy_name=config.session_name,
+                        strategy_version=config.strategy_config.version,
+                        fold_number=config.fold_number,
+                    )
+
                     # Risk Governor Evaluation
                     risk_snap = pos_mgr.get_risk_governor_snapshot(candle.close_time)
                     risk_decision, approved = deterministic_risk_governor.evaluate_intent(
@@ -213,6 +255,14 @@ class EventDrivenBacktestEngine:
                         snapshot=risk_snap,
                         current_time=candle.close_time
                     )
+
+                    if candidate is not None and not (risk_decision.result == "APPROVED" and approved):
+                        candidate.status = CandidateStatus.RISK_REJECTED
+                        candidate.risk_rejection_reasons = list(risk_decision.rejection_codes)
+                        candidates.append(candidate)
+                        candidate = None
+                    elif candidate is not None:
+                        candidate.status = CandidateStatus.APPROVED
 
                     # BUY execution at NEXT event open (NO_SAME_BAR_FILL by default)
                     if (
@@ -245,6 +295,24 @@ class EventDrivenBacktestEngine:
                         )
 
                         pos_mgr.process_fill(buy_fill, next_candle.close_time)
+
+                        if candidate is not None:
+                            candidate.status = CandidateStatus.FILLED
+                            candidate.actual_entry_price = fill_price
+                            pending_candidate = candidate
+                            candidate = None
+
+                    # Approved but never filled (e.g. no next candle) is a terminal, non-pending
+                    # outcome — record it so it isn't silently dropped from the lineage.
+                    if candidate is not None:
+                        candidates.append(candidate)
+
+        # An open position at dataset end has no exit yet: keep it in the ledger as FILLED
+        # with no outcome fields (censored, not fabricated) rather than dropping it.
+        if pending_candidate is not None:
+            candidates.append(pending_candidate)
+
+        self.session_candidates[session.session_id] = candidates
 
         # Compute Final Backtest Metrics
         final_nav = equity_curve[-1] if equity_curve else config.initial_cash
