@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from packages.execution.models import Fill
 from packages.positions.ledger import PortfolioLedger, portfolio_ledger
 from packages.positions.models import (
+    LedgerEntry,
     PortfolioSnapshot,
     Position,
     PositionStatus,
@@ -74,9 +75,23 @@ class PositionManager:
         # 1. Update Portfolio Ledger (session-scoped)
         entries, pnl_entry = self.ledger.process_fill(fill, current_time, avg_entry)
 
+        return self.apply_fill_accounting(fill, entries, pnl_entry)
+
+    def apply_fill_accounting(
+        self,
+        fill: Fill,
+        entries: List[LedgerEntry],  # noqa: ARG002 (accepted for API symmetry with process_fill)
+        pnl_entry: Optional[RealizedPnlEntry],
+    ) -> Tuple[Position, Optional[RealizedPnlEntry]]:
+        """Applies position/PnL-bucket bookkeeping for a fill whose ledger entries were already
+        computed elsewhere (e.g. by the durable fill-commit orchestrator, which persists the same
+        `entries`/`pnl_entry` to PostgreSQL before calling this). Kept separate from
+        ``process_fill`` so the durable path never re-invokes (and re-dedupes against) the ledger."""
         if pnl_entry:
             # F-05: bucket realized PnL by the fill's event time (UTC day / ISO week)
             self._record_realized_pnl(pnl_entry.realized_pnl, pnl_entry.exit_fee, fill.executed_at)
+
+        pos = self.positions.get(fill.symbol)
 
         if fill.side == "BUY":
             if not pos or pos.status == PositionStatus.CLOSED:

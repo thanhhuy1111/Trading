@@ -6,11 +6,24 @@ NOT executed against PostgreSQL in this environment (IMPLEMENTED_NOT_VERIFIED).
 """
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 from typing import List, Protocol
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.execution.models import Fill
+from packages.persistence.repositories import (
+    FillRepository,
+    LedgerRepository,
+    OrderRepository,
+    PnLBucketRepository,
+    PositionRepository,
+    RiskStateRepository,
+)
+from packages.positions.manager import PositionManager
 
 # Mandated order for committing one fill; a single DB transaction wraps all of it.
 FILL_COMMIT_STEP_ORDER: List[str] = [
@@ -102,3 +115,104 @@ class FillCommitOrchestrator:
 
 
 fill_commit_orchestrator = FillCommitOrchestrator()
+
+
+class SqlAlchemyFillTxnOps:
+    """Real PostgreSQL binding of ``FillTxnOps`` (F-04).
+
+    Domain accounting (ledger entries, position quantity/avg-cost, realized PnL) is computed
+    exactly once via the same tested ``PortfolioLedger``/``PositionManager`` logic used
+    elsewhere in the codebase, then persisted step-by-step inside the orchestrator's single
+    transaction. The in-memory ``position_manager`` passed in is mutated too, so it stays a
+    correct read cache of what was just durably committed (never re-derives from the ledger a
+    second time, which would double count).
+    """
+
+    def __init__(self, session: AsyncSession, session_id: UUID, position_manager: PositionManager) -> None:
+        self.session = session
+        self.session_id = session_id
+        self.position_manager = position_manager
+        self.fill_repo = FillRepository(session)
+        self.ledger_repo = LedgerRepository(session)
+        self.position_repo = PositionRepository(session)
+        self.pnl_repo = PnLBucketRepository(session)
+        self.risk_repo = RiskStateRepository(session)
+        self.order_repo = OrderRepository(session)
+        self._entries: List = []
+        self._pnl_entry = None
+        self._position = None
+
+    async def fill_already_committed(self, fill_id: UUID) -> bool:
+        return await self.fill_repo.exists(fill_id)
+
+    async def insert_fill(self, fill: Fill) -> None:
+        await self.fill_repo.insert(fill, self.session_id)
+
+    async def insert_ledger_entries(self, fill: Fill) -> None:
+        # Domain calculation (pure, deterministic): compute ledger entries once here.
+        pos_before = self.position_manager.positions.get(fill.symbol)
+        avg_entry = pos_before.average_entry_price if pos_before else Decimal("0.0")
+        entries, pnl_entry = self.position_manager.ledger.process_fill(fill, fill.executed_at, avg_entry)
+        self._entries = entries
+        self._pnl_entry = pnl_entry
+        await self.ledger_repo.insert_entries(
+            self.session_id,
+            fill.fill_id,
+            [
+                {
+                    "asset": e.asset,
+                    "entry_type": e.entry_type.value,
+                    "amount": e.amount,
+                    "currency": e.asset,
+                    "event_time": e.effective_at,
+                }
+                for e in entries
+            ],
+        )
+
+    async def upsert_position(self, fill: Fill) -> None:
+        # Applies the SAME entries/pnl_entry already persisted above — never re-touches the ledger.
+        pos, _ = self.position_manager.apply_fill_accounting(fill, self._entries, self._pnl_entry)
+        self._position = pos
+        await self.position_repo.upsert(
+            self.session_id,
+            fill.symbol,
+            pos.quantity,
+            pos.average_entry_price,
+            pos.total_cost_basis,
+            self._pnl_entry.realized_pnl if self._pnl_entry else Decimal("0"),
+            pos.status.value if hasattr(pos.status, "value") else str(pos.status),
+        )
+
+    async def update_pnl_bucket(self, fill: Fill, realized_pnl: Decimal) -> None:
+        if not self._pnl_entry:
+            return
+        pnl = self._pnl_entry.realized_pnl
+        fee = self._pnl_entry.exit_fee
+        et = fill.executed_at
+        day_start = et.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        week_start = day_start - timedelta(days=day_start.weekday())
+        week_end = week_start + timedelta(days=7)
+        await self.pnl_repo.add_realized_pnl(self.session_id, "DAILY", day_start, day_end, pnl, fee)
+        await self.pnl_repo.add_realized_pnl(self.session_id, "WEEKLY", week_start, week_end, pnl, fee)
+
+    async def update_risk_state(self, fill: Fill) -> None:
+        snap = self.position_manager.get_portfolio_snapshot(fill.executed_at)
+        await self.risk_repo.upsert(self.session_id, "NORMAL", snap.equity_peak, snap.drawdown_pct)
+
+    async def append_journal(self, fill: Fill) -> None:
+        # Round-4 scope: the durable journal table (paper_event_journal) already exists
+        # (migration 010); wiring fill-commit journal entries into it is deferred to the
+        # ingestion-worker integration pass. No-op here (does not affect atomicity: the fill,
+        # ledger, position, PnL, and risk-state rows above are still committed/rolled back together).
+        return
+
+    async def mark_order_filled(self, fill: Fill) -> None:
+        await self.order_repo.mark_filled(self.session_id, fill.client_order_id, fill.quantity)
+
+    async def commit(self) -> None:
+        await self.session.commit()
+
+    async def rollback(self) -> None:
+        await self.session.rollback()
