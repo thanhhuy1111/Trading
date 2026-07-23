@@ -11,6 +11,7 @@ from apps.api.routers import (
     audit,
     backtest,
     backtests,
+    chat,
     configurations,
     data_quality,
     events,
@@ -95,6 +96,7 @@ app.include_router(paper.router)
 app.include_router(operations.router)
 app.include_router(security.router)
 app.include_router(recommendations.router)
+app.include_router(chat.router)
 
 register_error_handlers(app)
 

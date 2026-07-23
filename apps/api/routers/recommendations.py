@@ -54,24 +54,10 @@ from packages.market_data.models import Timeframe
 from packages.ports.interfaces import PortfolioSnapshot, RecommendationRequest, RecommendationResult
 from packages.registries.models import RegistryEntry
 from packages.risk.portfolio_governor import BaselinePortfolioRiskGovernor, RiskEvaluationContext
+from packages.runtime.proposal_store import proposal_store
 from packages.runtime.recommendation_service import BaselineRecommendationService
 
 router = APIRouter(tags=["Recommendations"])
-
-# Ephemeral, in-memory only - not persisted across restarts (Phase 10's shadow storage is the
-# durable record; this is purely so a caller can re-fetch what /analyze or /scan just handed
-# back without re-running the whole pipeline). Bounded so a long-running process can't leak
-# memory from repeated calls.
-_MAX_STORED_PROPOSALS = 2000
-_proposal_store: Dict[UUID, TradeProposal] = {}
-
-
-def _remember(proposals: List[TradeProposal]) -> None:
-    for p in proposals:
-        _proposal_store[p.proposal_id] = p
-    if len(_proposal_store) > _MAX_STORED_PROPOSALS:
-        for old_id in list(_proposal_store)[: len(_proposal_store) - _MAX_STORED_PROPOSALS]:
-            del _proposal_store[old_id]
 
 
 class AnalyzeRequest(BaseModel):
@@ -138,7 +124,7 @@ async def analyze_symbol(
         as_of_time=body.as_of_time or datetime.now(timezone.utc),
     )
     result = await service.analyze(request, body.symbol)
-    _remember(result.proposals)
+    proposal_store.remember(result.proposals)
     return _to_response(result)
 
 
@@ -153,7 +139,7 @@ async def scan_symbols(
         as_of_time=body.as_of_time or datetime.now(timezone.utc),
     )
     result = await service.scan(request)
-    _remember(result.proposals)
+    proposal_store.remember(result.proposals)
     return _to_response(result)
 
 
@@ -161,7 +147,7 @@ async def scan_symbols(
 async def get_proposal(
     proposal_id: UUID, _principal: AuthenticatedPrincipal = Depends(require_permission("read:recommendations")),
 ) -> TradeProposal:
-    proposal = _proposal_store.get(proposal_id)
+    proposal = proposal_store.get(proposal_id)
     if proposal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found.")
     return proposal
