@@ -74,7 +74,7 @@ class BaselineRankingService:
 
         cost_penalty = i.cost_bps / Decimal("100")  # normalize bps to a comparable 0..~1 scale
 
-        if has_edge_and_probability:
+        if i.expected_net_edge_bps is not None and i.calibrated_probability is not None:
             edge_term = (i.expected_net_edge_bps / Decimal("100")) * i.calibrated_probability
             status = RankingStatus.EVIDENCE_BACKED if evidence_weight >= Decimal("0.5") else RankingStatus.RESEARCH_ONLY
         else:

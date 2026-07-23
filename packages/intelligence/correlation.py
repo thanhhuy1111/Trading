@@ -10,7 +10,7 @@ service never makes that choice for it.
 import statistics
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from packages.domain.entities import CorrelationSnapshot
 from packages.market_data.models import Candle, Timeframe
@@ -39,7 +39,7 @@ class BaselineCorrelationService:
         self._max_staleness = max_staleness
 
     def snapshot(self, symbol_a: str, symbol_b: str, timeframe: Timeframe, as_of_time: datetime) -> CorrelationSnapshot:
-        base = dict(
+        base: Dict[str, Any] = dict(
             window_config_version=CORRELATION_WINDOW_VERSION, symbol_a=symbol_a, symbol_b=symbol_b,
             timeframe=timeframe.value, window_bars=self._window_bars,
         )
@@ -80,9 +80,9 @@ class BaselineCorrelationService:
         )
 
 
-def _aligned_returns_by_timestamp(candles: List[Candle]):
+def _aligned_returns_by_timestamp(candles: List[Candle]) -> Dict[datetime, float]:
     sorted_candles = sorted(candles, key=lambda c: c.close_time)
-    returns = {}
+    returns: Dict[datetime, float] = {}
     for prev, cur in zip(sorted_candles, sorted_candles[1:], strict=False):
         if prev.close_price > 0:
             returns[cur.close_time] = float((cur.close_price - prev.close_price) / prev.close_price)

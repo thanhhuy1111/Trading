@@ -3,7 +3,7 @@ and compatibility-scoped queries. Shared implementation behind all seven Phase 3
 their exact-match/no-fallback behavior can't drift between instances."""
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from packages.domain.enums import RegistryEntryStatus
 from packages.registries.models import RegistryEntry
@@ -31,7 +31,7 @@ class InvalidStatusTransitionError(Exception):
 class ArtifactRegistry:
     def __init__(self, registry_name: str) -> None:
         self.registry_name = registry_name
-        self._entries: Dict[tuple, RegistryEntry] = {}
+        self._entries: Dict[Tuple[str, str], RegistryEntry] = {}
 
     def register(self, entry: RegistryEntry) -> RegistryEntry:
         self._entries[entry.key()] = entry

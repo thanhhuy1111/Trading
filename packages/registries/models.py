@@ -1,7 +1,7 @@
 """Phase 3: registry entry model shared by all seven artifact registries."""
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -25,7 +25,7 @@ class RegistryEntry(BaseModel):
     compatible_timeframes: List[str] = Field(default_factory=list)  # empty == universal
     reason_codes: List[str] = Field(default_factory=list)
 
-    def key(self) -> tuple:
+    def key(self) -> Tuple[str, str]:
         return (self.name, self.version)
 
     def is_compatible(self, symbol: Optional[str], timeframe: Optional[str]) -> bool:

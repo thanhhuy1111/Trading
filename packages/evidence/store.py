@@ -7,7 +7,7 @@ thing we have."
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from packages.evidence.audit import (
     EVIDENCE_CREATED,
@@ -20,6 +20,9 @@ from packages.evidence.audit import (
     evidence_audit_log,
 )
 from packages.evidence.models import EvidenceKey, EvidenceRecord, EvidenceStatus
+
+if TYPE_CHECKING:
+    from packages.ports.interfaces import EvidenceLookupOutcome
 
 
 def _key_summary(key: EvidenceKey) -> str:
@@ -61,7 +64,7 @@ class EvidenceStore:
             return record.model_copy(update={"status": EvidenceStatus.STALE})
         return record
 
-    def lookup_with_result(self, key: EvidenceKey, as_of: Optional[datetime] = None):
+    def lookup_with_result(self, key: EvidenceKey, as_of: Optional[datetime] = None) -> "EvidenceLookupOutcome":
         """Phase 5: typed MATCH/MISMATCH/MISSING/STALE/DISABLED classification (Section 5),
         with every non-MATCH outcome recorded to the audit log as `lookup_rejected` — a
         rejected lookup is exactly as auditable as a granted one."""

@@ -11,11 +11,12 @@ or approved in this task").
 """
 
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from packages.candidates.models import TradeCandidate
 from packages.domain.entities import ModelPrediction
 from packages.domain.enums import MetaLabelDecision, ModelType
+from packages.registries.models import RegistryEntry
 from packages.registries.registry import ArtifactRegistry
 
 FEATURE_VERSION = "standard_v1"
@@ -52,7 +53,9 @@ class _RegistryBackedMetaLabelService:
 
     model_type: ModelType
 
-    def __init__(self, registry: ArtifactRegistry, artifact_loader=None) -> None:
+    def __init__(
+        self, registry: ArtifactRegistry, artifact_loader: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
+    ) -> None:
         self._registry = registry
         # Injected so tests can supply a fixture artifact dict without touching a filesystem —
         # production wiring would load JSON from RegistryEntry.artifact_location.
@@ -71,7 +74,7 @@ class _RegistryBackedMetaLabelService:
             status="BASELINE_ONLY",
         )
 
-    def _find_entry(self, candidate: TradeCandidate):
+    def _find_entry(self, candidate: TradeCandidate) -> Optional[RegistryEntry]:
         from packages.domain.enums import RegistryEntryStatus
         candidates = [
             e for e in self._registry.find_compatible(symbol=candidate.symbol, timeframe=candidate.timeframe)
@@ -103,6 +106,8 @@ class LogisticRegressionMetaLabelService(_RegistryBackedMetaLabelService):
         if entry is None:
             return self._unavailable(candidate, "TRAINED_MODEL_NOT_AVAILABLE")
 
+        if entry.artifact_location is None:
+            return self._unavailable(candidate, "MODEL_ARTIFACT_UNREADABLE")
         artifact = self._artifact_loader(entry.artifact_location)
         if artifact is None:
             return self._unavailable(candidate, "MODEL_ARTIFACT_UNREADABLE")
@@ -146,6 +151,8 @@ class TreeMetaLabelService(_RegistryBackedMetaLabelService):
         if entry is None:
             return self._unavailable(candidate, "TRAINED_MODEL_NOT_AVAILABLE")
 
+        if entry.artifact_location is None:
+            return self._unavailable(candidate, "MODEL_ARTIFACT_UNREADABLE")
         artifact = self._artifact_loader(entry.artifact_location)
         if artifact is None:
             return self._unavailable(candidate, "MODEL_ARTIFACT_UNREADABLE")
@@ -181,7 +188,9 @@ def _feature_vector(feature_names: List[str], feature_snapshot: Dict[str, Option
     return vector
 
 
-def _score_logistic_regression(artifact: Dict[str, Any], feature_snapshot: Dict[str, Optional[str]]):
+def _score_logistic_regression(
+    artifact: Dict[str, Any], feature_snapshot: Dict[str, Optional[str]],
+) -> Tuple[float, MetaLabelDecision]:
     features = _feature_vector(artifact["feature_names"], feature_snapshot)
     logit = artifact["intercept"] + sum(c * f for c, f in zip(artifact["coefficients"], features, strict=True))
     probability = 1.0 / (1.0 + math.exp(-logit))

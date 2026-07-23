@@ -6,7 +6,7 @@ present.
 """
 
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from packages.domain.entities import MarketContextAssessment
 from packages.domain.enums import MarketContextStatus
@@ -55,7 +55,7 @@ class BaselineMarketContextService:
 
     DEFAULT_TIMEOUT_SECONDS = 10.0
 
-    def __init__(self, agents=None) -> None:
+    def __init__(self, agents: Optional[List[_NoOpContextAgent]] = None) -> None:
         self._agents = agents if agents is not None else [
             NoOpNewsAgent(), NoOpMacroAgent(), NoOpSentimentAgent(), NoOpRiskCritic(),
         ]
