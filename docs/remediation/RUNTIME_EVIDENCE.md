@@ -28,7 +28,13 @@ Ledger cash: 93948.00  | NAV=99993.95
 - Risk Governor independently sized the order; the paper **fill price (61070.23) ≤ maximum_entry_price (61100.75)** — F-09 cap holds, with non-zero slippage (F-08).
 - Ledger/position/NAV are internally consistent (`NAV = cash + qty × mark`).
 
+## Round 2 additions (verified at unit level)
+- **Backtest now runs this same chain** (F-01 backtest closed): `test_backtest_actually_trades_through_pipeline` replays a 60-candle rise-then-fall dataset — DecisionService produces a LONG, the Risk Governor sizes it, a next-open capped fill opens the position, and the session-scoped exit governor closes it on the drop → `report.trade_count >= 1`, `status == COMPLETED`.
+- **Ingestion worker** drives `process_candle_close` from a fake stream with closed-candle-only / dedup / out-of-order / gap→DEGRADED→backfill→RUNNING / clock-skew / clean-cancel semantics, and blocks new entries while DEGRADED (`test_paper_ingestion_worker`).
+- **Session isolation (in-memory):** two sessions keep independent cash/positions/NAV; exit paths write to the session manager, not the global singleton (`test_session_isolation_inmemory`).
+- **Risk windows:** realized PnL is bucketed by UTC day / ISO week from fill event time (`test_risk_pnl_windows`).
+
 ## What is NOT yet runtime-proven
-- This chain is driven programmatically / by tests. There is still **no live market-data worker** feeding `process_candle_close` (F-02), so continuous unattended operation is not demonstrated.
-- Backtest still uses its inline momentum rule, not this chain (F-01 backtest OPEN).
-- State is in-memory; restart durability and true session isolation are not proven (F-03/F-04).
+- No **live** market-data feed; the worker was verified only with a fake in-process stream (F-02 PARTIAL).
+- No database: persistence, DB-backed idempotency, and restart recovery are not implemented/verified (F-04 OPEN); isolation and PnL buckets are in-memory only.
+- Integration / migration / docker gates were not run (infra absent). See REMAINING_LIMITATIONS.md.

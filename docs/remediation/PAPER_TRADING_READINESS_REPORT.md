@@ -4,47 +4,45 @@
 ```
 C — NOT READY FOR PAPER TRADING
 ```
-Meaningful, verified progress was made on the CRITICAL finding, but the minimum acceptance
-conditions for **B (READY WITH CONDITIONS)** are not met.
+Real progress was made on the runtime/state theme, but the round's own rule is explicit:
+without disposable Postgres/Redis runtime evidence the decision must remain **C**, and F-03/F-04
+may not be marked verified. That infrastructure is absent here.
 
-## Why not B (minimum-condition checklist)
+## Why not B (minimum-condition checklist for this round)
 | Minimum condition for B | Met? |
 |---|---|
-| Agent pipeline actually runs | ✅ (paper, verified end-to-end) |
-| Paper receives closed candles automatically | ❌ no ingestion worker (F-02) |
-| Execution goes through validation gate | ⚠️ paper yes (gate); backtest no; not full ExecutionEngine |
-| Session isolation achieved | ❌ ledger still a global singleton (F-03) |
-| State persisted | ❌ in-memory only (F-04) |
-| Restart without duplicate fill | ❌ recovery still a stub (F-04) |
-| Daily/weekly risk correct | ❌ still lifetime-cumulative (F-05) |
-| Dashboard free of fake data | ❌ unchanged (F-10) |
-| API mutations authenticated | ❌ unchanged (F-12) |
-| Core unit + integration tests pass | ⚠️ unit yes (118); integration NOT RUN (no DB) |
+| Closed candles automatically enter the paper pipeline | ⚠️ worker logic verified with a fake stream; no live feed / route wiring (F-02 PARTIAL) |
+| No global accounting singleton in the runtime | ⚠️ paper + backtest exits are session-scoped; global singleton still exists for legacy/default (F-03 PARTIAL) |
+| State persisted in PostgreSQL | ❌ not implemented — no DB (F-04) |
+| DB-backed idempotency | ❌ in-memory only (F-04) |
+| Restart recovery passes | ❌ recovery still a stub; not runnable (F-04) |
+| Session isolation passes | ⚠️ in-memory only, not durable/cross-process (F-03) |
+| Daily/weekly risk buckets pass | ✅ (in-memory, unit-verified) |
+| Backtest uses DecisionService | ✅ |
+| Integration tests pass | ❌ NOT RUN (no Postgres/Redis) |
+| Migration cycle passes | ❌ NOT RUN (no alembic/DB) |
 
-Multiple ❌ ⇒ decision remains **C**.
+Multiple ❌ (all rooted in absent DB/infra) ⇒ **C**.
 
-## What genuinely improved this pass (VERIFIED)
-- The real multi-agent decision pipeline now runs in paper trading via a shared `DecisionService`; the fabricated hardcoded intent is gone (F-01, paper).
-- Hardcoded `reference_price=65000` removed everywhere; reference price is the live candle close (verified in RUNTIME_EVIDENCE).
-- No fabricated positive edge: missing expected return → 0 bps + reason code → NO_TRADE (honest).
-- Paper BUY fill can never exceed `maximum_entry_price`, with realistic slippage vs. reference (F-08/F-09, verified).
-- Risk Governor no longer crashes on omitted `current_time` (F-13). Wilder RSI (F-14).
-- ExitProtector no longer force-writes the global position manager (F-03, partial).
-- Strategy thresholds moved to a versioned `StrategyConfig`; its hash is recorded in decision lineage.
+## What genuinely improved this round (VERIFIED at unit level)
+- Backtest now runs the **same** DecisionService as paper (F-01 fully closed for mechanics); a rise-then-fall backtest opens and exits a real round-trip.
+- Realized-PnL risk limits are UTC-day / ISO-week windowed by fill event time (F-05) — yesterday's loss no longer counts today.
+- Paper sessions own isolated in-memory ledgers; exit paths (`ExitProtector`, `exit_governor`) are session-scoped, not global (F-03 in-memory).
+- A closed-candle ingestion worker with dedup / out-of-order / gap→DEGRADED→backfill / clock-skew / clean-cancel semantics (F-02 logic), proven to block entries while DEGRADED.
 
-## Distinctions (per prompt §19)
-- **Implemented + Verified:** paper decision wiring, entry-price cap, slippage model, governor time fix, Wilder RSI, honest edge/config.
-- **Implemented, not fully verified (needs infra):** integration/DB/docker/mypy gates.
-- **Not implemented (OPEN):** F-02, F-04, F-05, F-06 (full), F-07, F-10, F-11, F-12, and backtest rewire of F-01.
-- **Not operationally proven:** 30-day continuous run, restart durability, strategy profitability.
+## Distinctions (Implemented / Verified / Runtime-proven / Operationally-proven)
+- **RESOLVED_VERIFIED (unit):** F-01, F-05, F-08, F-09, F-13, F-14.
+- **PARTIAL:** F-02 (worker logic only), F-03 (in-memory only), F-06.
+- **OPEN / infra-blocked:** F-04 (durable persistence + recovery), integration/migration/docker gates.
+- **Not operationally proven:** live feed, restart durability, 30-day continuous run, profitability.
 
-## Top blockers to reach B
-1. Market-data ingestion worker feeding closed candles into the paper pipeline (F-02).
-2. Durable per-session persistence + real journal-replay recovery with DB idempotency (F-03/F-04).
-3. Time-windowed daily/weekly loss limits (F-05).
-4. Route auth/RBAC enforcement on mutation endpoints (F-12).
-5. Dashboard bound to real backend data (F-10).
+## Top blockers to reach B (next round, requires a disposable Postgres + Redis)
+1. Durable persistence layer + Alembic migration + DB-backed idempotency (F-04).
+2. Real restart recovery with reconciliation (F-04).
+3. Connect the ingestion worker to a live public feed + DB-backed dedup, and wire `start_runtime` (F-02).
+4. Promote F-03 isolation to durable per-session persistence.
+5. Run integration + migration + docker gates as evidence.
 
 ## Safety
-Live-trading boundary unchanged and intact; no private API, no credentials, no LLM in the
-decision path were introduced.
+Live-trading boundary unchanged and intact: `LIVE_TRADING_ENABLED=false`, no private API, no
+credentials, no LLM in the decision path. All data paths remain public + paper simulator.
