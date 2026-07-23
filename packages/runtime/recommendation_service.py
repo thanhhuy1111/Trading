@@ -303,6 +303,22 @@ class BaselineRecommendationService:
             risk_score=Decimal("0.1"),
         )])[0]
 
+        # Correlation and strategy-portfolio are consulted for every proposal (research or
+        # approved) so a research recommendation still reflects "what would correlation/
+        # sleeve authorization/portfolio risk have said" - informational for a research
+        # proposal (no real capital is requested), binding for an approved one.
+        portfolio_snapshot = self.portfolio_snapshot_provider()
+        correlation_snapshots = [
+            self.correlation_service.snapshot(symbol, held_symbol, request.timeframe, request.as_of_time)
+            for held_symbol in portfolio_snapshot.positions_by_symbol
+            if held_symbol != symbol
+        ]
+        sleeve_reason_codes = _strategy_sleeve_reason_codes(self.strategy_portfolio, candidate)
+        advisory_risk_decision = self.portfolio_risk_governor.evaluate(
+            candidate, self.config.requested_risk_pct, portfolio_snapshot,
+            RiskEvaluationContext(evidence_actionable=evidence_actionable, correlation_snapshots=correlation_snapshots),
+        )
+
         if not evidence_actionable:
             proposal = self._build_proposal(
                 candidate, prediction, ranking_result, evidence_status_label,
@@ -310,20 +326,15 @@ class BaselineRecommendationService:
             )
             return _SymbolOutcome(
                 state=ApplicationResultState.RESEARCH_PROPOSAL,
-                reason_codes=[f"EVIDENCE_NOT_ACTIONABLE:{evidence_status_label}", *evidence_outcome.reason_codes],
+                reason_codes=[
+                    f"EVIDENCE_NOT_ACTIONABLE:{evidence_status_label}", *evidence_outcome.reason_codes,
+                    *sleeve_reason_codes,
+                    *[f"ADVISORY_RISK:{code}" for code in advisory_risk_decision.reason_codes],
+                ],
                 limitations=limitations, candidate_id=candidate.candidate_id, proposal=proposal,
             )
 
-        portfolio_snapshot = self.portfolio_snapshot_provider()
-        correlation_snapshots = [
-            self.correlation_service.snapshot(symbol, held_symbol, request.timeframe, request.as_of_time)
-            for held_symbol in portfolio_snapshot.positions_by_symbol
-            if held_symbol != symbol
-        ]
-        risk_decision = self.portfolio_risk_governor.evaluate(
-            candidate, self.config.requested_risk_pct, portfolio_snapshot,
-            RiskEvaluationContext(evidence_actionable=True, correlation_snapshots=correlation_snapshots),
-        )
+        risk_decision = advisory_risk_decision  # binding once evidence is actionable
 
         if risk_decision.decision.value == "HALT":
             state = (
@@ -346,7 +357,8 @@ class BaselineRecommendationService:
             ApplicationResultState.APPROVED_PROPOSAL, approved_risk_pct=risk_decision.approved_risk_pct,
         )
         return _SymbolOutcome(
-            state=ApplicationResultState.APPROVED_PROPOSAL, reason_codes=list(risk_decision.reason_codes),
+            state=ApplicationResultState.APPROVED_PROPOSAL,
+            reason_codes=[*risk_decision.reason_codes, *sleeve_reason_codes],
             limitations=limitations, candidate_id=candidate.candidate_id, proposal=proposal,
         )
 
@@ -399,6 +411,20 @@ class BaselineRecommendationService:
             reason_codes=[],
             code_commit=CODE_COMMIT,
         )
+
+
+def _strategy_sleeve_reason_codes(strategy_portfolio: StrategyPortfolio, candidate: TradeCandidate) -> List[str]:
+    """Informational only - the strategy portfolio never blocks a proposal in this baseline
+    (an empty/uncurated portfolio is the expected default state, not an error); it just records
+    whether a sleeve exists and whether it's evidence-approved, for the caller/shadow record to
+    see."""
+    eligible = strategy_portfolio.eligible_sleeves(candidate.symbol, candidate.timeframe, candidate.market_regime)
+    if not eligible:
+        return ["NO_STRATEGY_SLEEVE_REGISTERED"]
+    approved = strategy_portfolio.approved_sleeves(candidate.symbol, candidate.timeframe, candidate.market_regime)
+    if approved:
+        return ["STRATEGY_SLEEVE_APPROVED_ELIGIBLE"]
+    return ["STRATEGY_SLEEVE_RESEARCH_ONLY"]
 
 
 def _state_for_pipeline_rejection(reason: Optional[str]) -> ApplicationResultState:
