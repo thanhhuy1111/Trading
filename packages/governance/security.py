@@ -26,14 +26,18 @@ class AuthenticatedPrincipal(BaseModel):
 
 
 ROLE_PERMISSIONS: Dict[str, Set[str]] = {
-    "VIEWER": {"read:dashboard", "read:market_data", "read:positions"},
-    "ANALYST": {"read:dashboard", "read:market_data", "read:positions", "create:backtest", "read:backtest"},
+    "VIEWER": {"read:dashboard", "read:market_data", "read:positions", "read:recommendations"},
+    "ANALYST": {
+        "read:dashboard", "read:market_data", "read:positions", "create:backtest", "read:backtest",
+        "read:recommendations"
+    },
     "OPERATOR": {
         "read:dashboard", "read:market_data", "read:positions", "create:backtest", "read:backtest",
-        "manage:paper_session"
+        "manage:paper_session", "read:recommendations", "create:recommendation"
     },
     "RISK_OPERATOR": {
-        "read:dashboard", "read:market_data", "read:positions", "manage:paper_session", "manage:risk_governor"
+        "read:dashboard", "read:market_data", "read:positions", "manage:paper_session", "manage:risk_governor",
+        "read:recommendations", "manage:strategy_portfolio"
     },
     "SECURITY_AUDITOR": {
         "read:dashboard", "read:audit", "read:incidents", "read:security", "manage:security_incidents"
@@ -41,7 +45,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     "ADMINISTRATOR": {
         "read:dashboard", "read:market_data", "read:positions", "create:backtest", "read:backtest",
         "manage:paper_session", "manage:risk_governor", "read:audit", "read:incidents", "read:security",
-        "manage:security_incidents", "manage:system_config"
+        "manage:security_incidents", "manage:system_config", "read:recommendations", "create:recommendation",
+        "manage:strategy_portfolio"
     },
 }
 

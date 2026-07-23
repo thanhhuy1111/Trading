@@ -61,3 +61,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "B", "I"]
 ignore = []
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection markers (Depends/Query/Header/Path/Body) are sentinel
+# objects evaluated once per request by FastAPI's DI system, not the mutable-default-argument
+# footgun B008 exists to catch - this is the standard, documented exception for FastAPI code.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path", "fastapi.Body",
+    "apps.api.deps.require_permission",
+]

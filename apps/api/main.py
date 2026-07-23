@@ -4,6 +4,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from apps.api.error_schema import register_error_handlers
 from apps.api.routers import (
     agents,
     agents_m4,
@@ -23,6 +24,7 @@ from apps.api.routers import (
     paper,
     portfolio,
     positions,
+    recommendations,
     risk,
     risk_m6,
     security,
@@ -92,6 +94,9 @@ app.include_router(backtests.router)
 app.include_router(paper.router)
 app.include_router(operations.router)
 app.include_router(security.router)
+app.include_router(recommendations.router)
+
+register_error_handlers(app)
 
 
 @app.get("/metrics")
