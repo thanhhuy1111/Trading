@@ -1,30 +1,35 @@
 # DATABASE TRANSACTION EVIDENCE (F-04 atomicity)
 
-Environment: Python 3.10.10; SQLAlchemy present; asyncpg 0.31.0 + alembic + psycopg2 installed
-this round (declared project deps). **No PostgreSQL server** (no docker/initdb/psql); the lone
-`:5432` is unknown-ownership and off-limits. PostgreSQL version: **N/A (not run)**.
-Migration revision: `013_paper_runtime_persistence` (head).
+## Round 4 — REAL PostgreSQL run
 
-## What is verified (design-level, no DB)
-| Property | Command / Test | Result | Commit |
-|---|---|---|---|
-| Migration DDL emits atomically-usable schema | `alembic upgrade 012:013 --sql` (offline) | PASS — CREATE for all 7 `paper_*` tables + unique constraints + indexes | `3604dca` |
-| Downgrade emits FK-safe drops | `alembic downgrade 013:012 --sql` (offline) | PASS — DROP in reverse/FK-safe order | `3604dca` |
-| DDL compiles for postgresql dialect | `tests/unit/test_persistence_schema.py::test_all_tables_compile_for_postgres` | PASS | `3604dca` |
-| One-transaction step order | `test_fill_commit_orchestration.py::test_happy_path_runs_all_steps_in_order_and_commits` | PASS — order == FILL_COMMIT_STEP_ORDER | `fdefaab` |
-| Rollback on mid-transaction failure (no partial commit) | `...::test_failure_midway_rolls_back_and_does_not_commit` | PASS — `commit` never called, `rollback` called, later steps skipped | `fdefaab` |
+Environment: PostgreSQL 16.2 (disposable Docker container, `localhost:55432`), `alembic` head
+`013_paper_runtime_persistence`. Command: `PAPER_DB_TEST_URL=postgresql+asyncpg://postgres:postgres@localhost:55432/trading_db python3 -m pytest tests/integration/test_paper_durable_persistence.py -v`.
 
-## The atomic unit (packages/persistence/unit_of_work.py)
-`FillCommitOrchestrator.commit_fill` runs, inside a single transaction, in this exact order:
-`insert_fill → insert_ledger_entries → upsert_position → update_pnl_bucket → update_risk_state
-→ append_journal → mark_order_filled → commit`. Any exception triggers `rollback()` and the
-error is surfaced — so none of these states can exist: fill-without-ledger, ledger-without-fill,
-position-without-cash-debit, PnL-updated-but-rolled-back, journal-for-uncommitted-txn.
+| Test | Result |
+|---|---|
+| `test_database_migration_cycle` | **PASS** — all 7 `paper_*` tables present |
+| `test_fill_transaction_is_atomic_and_rolls_back` | **PASS** — fault injected in `update_risk_state`; after rollback: fill absent, ledger entries empty, position absent (no partial state) |
 
-## NOT verified (honest)
-- No transaction ran against real PostgreSQL. The SQLAlchemy `FillTxnOps` implementation that
-  binds these steps to `AsyncSession` + the `paper_*` tables is authored intent for the next
-  round; the atomicity/rollback guarantees are verified only at the orchestration-logic level
-  with a fake transaction object. **Status: IMPLEMENTED_NOT_VERIFIED on PostgreSQL.**
-- Real fault-injection before/after commit and the process-restart drill require a disposable
-  PostgreSQL (see `tests/integration/test_paper_durable_persistence.py`, currently skipped).
+## What this proves (real, not simulated)
+`SqlAlchemyFillTxnOps` (`packages/persistence/unit_of_work.py`) binds `FillCommitOrchestrator`'s
+mandated step order — `insert_fill → insert_ledger_entries → upsert_position →
+update_pnl_bucket → update_risk_state → append_journal → mark_order_filled → commit` — to real
+`AsyncSession` operations against the `paper_*` tables. A `RuntimeError` injected mid-chain
+causes `session.rollback()`; verified in a **separate** session afterwards that zero rows exist
+for that fill across `paper_fills`, `paper_ledger_entries`, and `paper_positions` — genuinely no
+partial-commit state, confirmed by querying the real database, not by inspecting in-memory
+mocks.
+
+## Commit
+`ddbab2b fix: commit fills and accounting in one real PostgreSQL transaction`
+
+## Status change
+F-04 atomic-commit: **IMPLEMENTED_NOT_VERIFIED → RESOLVED_VERIFIED** (on PostgreSQL 16.2,
+disposable).
+
+## Remaining gap (honest)
+The live `PaperPipeline.process_candle_close` runtime loop does **not yet** call
+`FillCommitOrchestrator`/`SqlAlchemyFillTxnOps` — it still applies fills via the in-memory
+`PositionManager.process_fill` path. The durable transaction mechanism is built and verified in
+isolation (this document) but is not yet the active runtime path for live paper trading. Wiring
+`PaperPipeline` to use it is the next actionable item (see REMAINING_LIMITATIONS.md).

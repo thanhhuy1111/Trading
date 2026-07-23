@@ -42,7 +42,26 @@ It was **NOT executed against PostgreSQL** (no server) and is **not yet wired as
 source of truth** — the live paper pipeline still uses in-memory state. See
 DATABASE_TRANSACTION_EVIDENCE.md, DB_IDEMPOTENCY_EVIDENCE.md, RECOVERY_DRILL_EVIDENCE.md.
 
+## Round 4 (REAL PostgreSQL 16.2, disposable container)
+Docker Desktop installed; a disposable PostgreSQL 16.2 container was used (isolated from an
+unrelated pre-existing process bound to the host's `:5432`, never touched). Running the
+migration chain for the FIRST TIME EVER against a real database surfaced and fixed a systemic,
+pre-existing defect (7 duplicate table declarations across 001/003/005/006/007/008 — see
+MIGRATION_EVIDENCE.md). After the fix:
+- `alembic upgrade head` / `downgrade -1` / `upgrade head`: **PASS** (111 tables).
+- 12/12 integration tests pass for real: atomic fill-commit + rollback, fill/order/candle
+  DB-backed idempotency (including genuine `asyncio.gather` concurrent races), durable session
+  isolation, restart-drill reconciliation (both the pass path and the fail-safe
+  `RECOVERY_REQUIRED` path), durable PnL buckets surviving restart, late-fill correct bucketing.
+- `docker compose build` succeeds for both `trading-api` and `trading-dashboard` images.
+
+This is genuine, first-time, real-database evidence for F-02/F-03/F-04/F-05's persistence
+mechanism — see DATABASE_TRANSACTION_EVIDENCE.md, DB_IDEMPOTENCY_EVIDENCE.md,
+SESSION_ISOLATION_EVIDENCE.md, RECOVERY_DRILL_EVIDENCE.md, RISK_WINDOW_EVIDENCE.md for the
+per-test breakdown.
+
 ## What is NOT yet runtime-proven
-- No **live** market-data feed; the worker was verified only with a fake in-process stream (F-02 PARTIAL).
-- No database RUN: persistence, DB-backed idempotency, and restart recovery are IMPLEMENTED_NOT_VERIFIED on PostgreSQL (F-04); runtime isolation and PnL buckets are still in-memory.
-- Integration / online-migration / docker gates were not run (infra absent). See REMAINING_LIMITATIONS.md.
+- The live `PaperPipeline`/`PaperIngestionWorker` runtime loop does not yet call this
+  now-verified durable mechanism — it still operates in-memory only (wiring is the next item).
+- No **live** market-data feed; the worker was verified only with a fake in-process stream (F-02 PARTIAL, live feed).
+- No burn-in / continuous-operation drill has been run. `mypy` was not run this round.

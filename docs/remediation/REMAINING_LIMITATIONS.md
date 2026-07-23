@@ -1,5 +1,35 @@
 # REMAINING LIMITATIONS (nothing hidden)
 
+## Round 4 update (durable persistence — REAL PostgreSQL this time)
+Docker Desktop was installed and a disposable PostgreSQL 16.2 + Redis 7.2 were used. The
+migration chain was fixed (a pre-existing, previously-undiscovered defect — see
+MIGRATION_EVIDENCE.md) and run for real: `upgrade head` / `downgrade -1` / `upgrade head` all
+passed. 12 integration tests covering atomic transactions, DB-backed idempotency (fill, order,
+candle), durable session isolation, restart recovery (both the success and the fail-safe path),
+and durable PnL buckets all pass against this real database. `docker compose build` succeeds
+for both images. This is genuine runtime evidence, not design-only.
+
+**What is still open:** the live paper-trading runtime (`packages/paper/pipeline.py`'s
+`PaperPipeline.process_candle_close` and `packages/paper/ingestion.py`'s
+`PaperIngestionWorker`) has **not** been switched over to call this now-verified durable layer —
+it still operates on in-memory state only (round 2/3's `PositionManager`/`PortfolioLedger`
+per-session objects, and an in-memory `set` for candle dedup). The mechanism to make PostgreSQL
+the runtime source of truth is built and proven; the wiring itself (routing
+`PaperPipeline`/`PaperIngestionWorker` through `FillCommitOrchestrator` +
+`ProcessedCandleRepository`, and exposing `recover_session_durable` from the
+`apps/api/routers/paper.py` recovery endpoint) is the next actionable item. This was deferred
+this round to keep the change set reviewable and to avoid destabilizing the 150 currently
+green unit tests (many of which call `PaperPipeline` synchronously without a DB session) under
+time pressure — a live-runtime rewire deserves its own focused pass with matching test updates.
+
+Also open/unaffected this round: live Binance public-feed connection for `PaperIngestionWorker`
+(still verified only via a fake in-process stream), F-07 (strategy validation), F-10 (dashboard
+real data), F-11 (backtest exit realism), F-12 (API auth/RBAC enforcement) — all explicitly out
+of this round's scope (F-02/F-03/F-04/F-05 only).
+
+`mypy` was not installed/run this round (not declared blocking for this round's scope by the
+round instructions, which listed persistence/migration/integration/docker as the primary gates).
+
 ## Round 3 update
 Durable persistence was **implemented and design/logic-verified** (schema, migration 013, atomic
 fill-commit orchestration, DB idempotency constraints, recovery reconciliation) but **NOT run on

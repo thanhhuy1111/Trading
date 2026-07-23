@@ -1,28 +1,41 @@
 # RECOVERY DRILL EVIDENCE (F-04)
 
-| Aspect | Implementation | Unit evidence | Integration evidence | Status |
-|---|---|---|---|---|
-| Reconciliation logic | `packages/persistence/reconciliation.py` | `tests/unit/test_recovery_reconciliation.py` (5) | none | RESOLVED_VERIFIED (logic only) |
-| Durable persistence + restart drill | schema/migration 013 + `unit_of_work.py` authored | schema/orchestration unit tests | none (no PostgreSQL) | IMPLEMENTED_NOT_VERIFIED |
-| Process-restart equality drill | integration skeleton (skipped) | — | NOT RUN | OPEN |
+## Round 4 — REAL PostgreSQL run
 
-## Verified this round (pure logic, no DB)
-`reconcile_session(...)` derives cash and asset quantities from ledger rows and compares them to
-materialized state:
-- clean state → `passed=True` → `recovery_status == "READY"`;
-- cash imbalance → `CASH_IMBALANCE` → `RECOVERY_REQUIRED`;
-- ledger row referencing a non-persisted fill → `UNLINKED_LEDGER_ENTRY`;
-- position quantity mismatch → `POSITION_MISMATCH`;
-- negative derived cash → `NEGATIVE_CASH`.
+Environment: PostgreSQL 16.2 (disposable, `localhost:55432`), migration head `013_paper_runtime_persistence`.
 
-This is the decision core the recovery service will use: only promote `RECOVERY_REQUIRED → READY`
-when reconciliation passes, else stay `RECOVERY_REQUIRED` + incident.
+| Test | Result |
+|---|---|
+| `test_restart_restores_exact_state` | **PASS** — a fill is committed, the in-memory `PositionManager` is discarded (`del pm_before`), fresh repository reads + `reconcile_session` against PostgreSQL reproduce the exact same cash delta, position quantity (0.1), and average entry price as the original in-memory state |
+| `test_recovery_reconciles_and_transitions_to_ready` | **PASS** — `PaperRecoveryService.recover_session_durable` loads fills/ledger/positions from Postgres, reconciles, rebuilds a fresh `PositionManager` with the correct position (`0.1` BTC), and transitions the session `RECOVERY_REQUIRED → READY` |
+| `test_recovery_detects_ledger_mismatch_stays_recovery_required` | **PASS** — after committing a fill, the `paper_positions.quantity` row is corrupted directly (simulating drift/corruption: set to `999.0`); recovery detects `POSITION_MISMATCH`, `result.passed == False`, returns `rebuilt_pm=None`, and the session **stays** `RECOVERY_REQUIRED` (never silently promoted) |
 
-## NOT verified (infra-blocked)
-The end-to-end restart drill (§13 of the round spec) — persist a fill, destroy the runtime,
-recreate it, recover, replay the same candle/order/fill, and assert
-`snapshot_before == snapshot_after` with zero duplicate fills/ledger/cash/position/PnL deltas —
-requires a disposable PostgreSQL, which is absent (no docker/initdb/psql; `:5432` off-limits).
-It is encoded as skipped tests in `tests/integration/test_paper_durable_persistence.py`
-(`test_restart_restores_exact_state`, `test_pnl_buckets_survive_restart`, …) and must be run on
-real PostgreSQL before F-04 can be marked verified. Until then the decision stays **C**.
+## Recovery flow implemented (`packages/paper/recovery.py::recover_session_durable`)
+```
+Load fills/ledger entries/positions from PostgreSQL for session_id
+→ derive cash (initial_cash − Σdebits + Σcredits) and asset quantities from the ledger
+→ reconcile_session(...) — unlinked-fill, cash-imbalance, position-mismatch, negative-cash checks
+→ PASS: rebuild in-memory PortfolioLedger (cash/asset balances, processed_fill_ids) and
+        PositionManager (positions dict) purely from durable rows → transition READY
+→ FAIL: log issues, session stays RECOVERY_REQUIRED, no runtime state rebuilt from bad data
+```
+
+## Commits
+`2c0b9af feat: implement real durable paper session recovery`,
+`9c851ab test: verify durable persistence, idempotency and recovery on real PostgreSQL`
+
+## Status change
+F-04 recovery: **OPEN → RESOLVED_VERIFIED** (on PostgreSQL 16.2, disposable).
+
+## Distinctions kept honest
+- The prior `recover_session()` (journal-replay-only stub, always transitions to READY) is
+  **unchanged** and still exists for the callers/tests that use it (round 1-3 compatibility).
+  `recover_session_durable()` is the new, real, conditional recovery path.
+- Fault-injection was demonstrated for **application-level** failures (mid-transaction
+  exception, corrupted materialized row). True infrastructure-level fault injection (kill `-9`
+  the actual FastAPI process mid-request) was not performed — the drill proves the recovery
+  *logic* correctly detects and refuses to promote on bad data, using real Postgres round-trips,
+  not that a literal process crash was survived.
+- The live paper-trading runtime is not yet wired to call `recover_session_durable` from an API
+  route; it exists and is verified as a service method, not yet triggered end-to-end from
+  `apps/api/routers/paper.py`.
