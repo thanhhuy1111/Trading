@@ -28,7 +28,25 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _ensure_version_column_width(connection: Connection) -> None:
+    """Alembic's default alembic_version.version_num is VARCHAR(32); some revision ids in
+    this project (e.g. '007_execution_engine_and_simulator', 34 chars) exceed that. Widen it
+    idempotently before running migrations. This touches only Alembic's own bookkeeping table,
+    never the content of a versioned migration file."""
+    from sqlalchemy import text
+    connection.execute(text(
+        "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(255) NOT NULL)"
+    ))
+    connection.execute(text(
+        "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
+    ))
+    # Commit this preparatory DDL now so Alembic's own context.begin_transaction() starts a
+    # fresh transaction rather than nesting inside (and silently depending on) this one.
+    connection.commit()
+
+
 def do_run_migrations(connection: Connection) -> None:
+    _ensure_version_column_width(connection)
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
