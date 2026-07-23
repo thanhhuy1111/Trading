@@ -42,7 +42,10 @@ def test_build_proposed_candidate_returns_none_without_trade_intent() -> None:
     class _FakeDecision:
         trade_intent = None
 
-    assert build_proposed_candidate(_FakeDecision(), session_id=None, strategy_name="x", strategy_version="1.0.0") is None
+    result = build_proposed_candidate(
+        _FakeDecision(), session_id=None, strategy_name="x", strategy_version="1.0.0"
+    )
+    assert result is None
 
 
 def test_candidate_lineage_survives_full_round_trip() -> None:
