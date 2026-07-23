@@ -44,8 +44,9 @@ class ProposalBuilder:
         config: RecommendationConfig = recommendation_config,
         now: Optional[datetime] = None,
     ) -> Optional[TradeProposal]:
-        if not prediction.is_usable:
+        if not prediction.is_usable or prediction.probability_profit is None:
             return None
+        probability_profit = prediction.probability_profit
 
         eval_time = now or datetime.now(candidate.data_timestamp.tzinfo)
 
@@ -65,7 +66,7 @@ class ProposalBuilder:
 
         score = opportunity_ranker.score(
             candidate=candidate,
-            probability_profit=prediction.probability_profit,
+            probability_profit=probability_profit,
             expected_net_return_bps=expected_net_return_bps,
             expected_downside_bps=expected_downside_bps,
             evidence_status=evidence.status.value,
@@ -114,7 +115,7 @@ class ProposalBuilder:
             entry_to=entry_to,
             stop_loss=stop_loss,
             take_profit_levels=[take_profit],
-            probability_profit=prediction.probability_profit,
+            probability_profit=probability_profit,
             expected_gross_return_bps=expected_gross_return_bps,
             estimated_cost_bps=cost.total_cost_bps,
             expected_net_return_bps=expected_net_return_bps,

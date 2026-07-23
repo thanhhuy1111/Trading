@@ -55,6 +55,11 @@ def evaluate_approval(
     )
     if not has_core_metrics:
         return EvidenceStatus.INSUFFICIENT, ["NO_OOS_METRICS_RECORDED"]
+    # Narrow Optional[Decimal] -> Decimal for the type checker; has_core_metrics already
+    # proved these are populated above.
+    assert evidence.profit_factor is not None
+    assert evidence.sharpe is not None
+    assert evidence.maximum_drawdown_pct is not None
 
     if (eval_time - evidence.created_at).days > config.evidence_max_age_days:
         return EvidenceStatus.STALE, ["EVIDENCE_OLDER_THAN_MAX_AGE"]

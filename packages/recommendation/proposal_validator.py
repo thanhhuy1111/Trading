@@ -50,7 +50,7 @@ def check_candidate_gates(
     if evidence.status != EvidenceStatus.APPROVED:
         reasons.append("STRATEGY_NOT_APPROVED")
 
-    if prediction is None or not prediction.is_usable:
+    if prediction is None or not prediction.is_usable or prediction.probability_profit is None:
         reasons.append("INSUFFICIENT_EVIDENCE_PREDICTION_UNAVAILABLE")
     else:
         if prediction.probability_profit < config.min_probability_profit:

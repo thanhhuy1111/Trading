@@ -13,7 +13,7 @@ import hashlib
 import json
 import time
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from packages.chat_agent.config import OrchestratorSettings, orchestrator_settings
 from packages.chat_agent.conversation_service import ConversationRepository, conversation_repository
@@ -30,6 +30,7 @@ from packages.chat_agent.models import (
     ChatRole,
     ChatTurnResult,
     FinishReason,
+    ToolCall,
     ToolCallAuditEntry,
     ToolResult,
     TranscriptEntry,
@@ -42,7 +43,7 @@ from packages.common.logger import logger
 from packages.telemetry.metrics import metrics_registry
 
 
-def _hash_arguments(arguments: dict) -> str:
+def _hash_arguments(arguments: Dict[str, Any]) -> str:
     payload = json.dumps(arguments, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
@@ -195,7 +196,9 @@ class TradingAdvisorOrchestrator:
                     proposal_ids.append(pid)
         return recommendation_result_id, proposal_ids
 
-    async def _execute_tool_call(self, conversation_id: str, call, audit: List[ToolCallAuditEntry]) -> ToolResult:
+    async def _execute_tool_call(
+        self, conversation_id: str, call: ToolCall, audit: List[ToolCallAuditEntry]
+    ) -> ToolResult:
         started = time.monotonic()
         metrics_registry.increment_counter("chat_tool_calls_total", {"component": call.name})
         try:

@@ -5,7 +5,7 @@ Pydantic models before any tool handler runs. Anything that fails validation nev
 reaches RecommendationService/EvidenceService.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -50,8 +50,8 @@ TOOL_INPUT_SCHEMAS = {
 }
 
 
-def json_schema_for(name: str) -> dict:
+def json_schema_for(name: str) -> Dict[str, Any]:
     model = TOOL_INPUT_SCHEMAS[name]
-    schema = model.model_json_schema()
+    schema: Dict[str, Any] = model.model_json_schema()
     schema.pop("title", None)
     return schema

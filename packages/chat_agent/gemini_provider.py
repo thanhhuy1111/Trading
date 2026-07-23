@@ -108,9 +108,11 @@ class GeminiProvider(LLMProvider):
             for part in candidate.content.parts:
                 if part.text:
                     text_parts.append(part.text)
-                if part.function_call:
+                if part.function_call and part.function_call.name:
                     fc = part.function_call
-                    tool_calls.append(ToolCall(call_id=fc.id or fc.name, name=fc.name, arguments=dict(fc.args or {})))
+                    assert fc.name is not None
+                    call_id = fc.id or fc.name
+                    tool_calls.append(ToolCall(call_id=call_id, name=fc.name, arguments=dict(fc.args or {})))
 
         if tool_calls:
             return AgentProviderResult(

@@ -40,6 +40,7 @@ from packages.recommendation.models import (
     SymbolMarketOverview,
     TimeframeSnapshot,
     TradeCandidate,
+    TradeProposal,
 )
 from packages.recommendation.opportunity_ranker import opportunity_ranker
 from packages.recommendation.proposal_builder import proposal_builder
@@ -71,12 +72,15 @@ def _parse_timeframe(value: str) -> Timeframe:
         raise MarketDataUnavailableError(f"Unsupported timeframe '{value}'") from exc
 
 
-def _volatility_bucket(vol_20: Optional[Decimal], strategy_config: StrategyConfig) -> str:
+def _volatility_bucket(
+    vol_20: "Decimal | int | bool | None", strategy_config: StrategyConfig
+) -> str:
     if vol_20 is None:
         return "UNKNOWN"
-    if vol_20 >= strategy_config.regime_high_vol_threshold:
+    vol = Decimal(str(vol_20))
+    if vol >= strategy_config.regime_high_vol_threshold:
         return "HIGH"
-    if vol_20 >= strategy_config.regime_high_vol_threshold / Decimal("2"):
+    if vol >= strategy_config.regime_high_vol_threshold / Decimal("2"):
         return "MEDIUM"
     return "LOW"
 
@@ -273,6 +277,11 @@ class RecommendationService:
         intent = decision_result.trade_intent
         if intent is None:
             return None
+        if intent.suggested_stop_price is None or intent.suggested_take_profit_price is None:
+            # Defensive: the allocator always sets both when it creates a BUY intent, but
+            # the field is Optional on TradeIntent itself; refuse to build a candidate with
+            # a missing stop/target rather than let a downstream validation error surface.
+            return None
 
         accepted_ids = set(decision_result.consensus.accepted_signals)
         contributing = [s for s in decision_result.signals if s.signal_id in accepted_ids]
@@ -326,7 +335,7 @@ class RecommendationService:
         now = datetime.now(timezone.utc)
         max_results = max_results or self._config.max_proposals
 
-        built_proposals: List = []
+        built_proposals: List[TradeProposal] = []
         no_trade_reasons: List[str] = []
         no_trade_symbols: List[str] = []
         symbols_evaluated: List[str] = []
