@@ -43,6 +43,11 @@ def _cache_path(symbol: str, timeframe: Timeframe) -> Path:
     return CACHE_DIR / f"{safe_symbol}_{timeframe.value}.json"
 
 
+def _partial_cache_path(symbol: str, timeframe: Timeframe) -> Path:
+    safe_symbol = symbol.replace("/", "")
+    return CACHE_DIR / f"{safe_symbol}_{timeframe.value}.partial.json"
+
+
 def _parse_kline_row(item: list, exchange_id: str, symbol: str, timeframe: Timeframe) -> Candle:
     open_ts = datetime.fromtimestamp(item[0] / 1000.0, tz=timezone.utc)
     close_ts = datetime.fromtimestamp(item[6] / 1000.0, tz=timezone.utc)
@@ -196,6 +201,104 @@ def load_or_fetch(
             },
             f,
         )
+    return candles
+
+
+def load_or_fetch_resumable(
+    symbol: str,
+    timeframe: Timeframe,
+    start_time: datetime,
+    end_time: datetime,
+    exchange_id: str = "binance",
+    request_pause_seconds: float = 0.2,
+    force_refresh: bool = False,
+) -> List[Candle]:
+    """Like `load_or_fetch`, but checkpoints progress to a `.partial.json` sidecar after every
+    page fetched — a network failure or interrupted process resumes from the last completed
+    page instead of restarting the whole (potentially years-long, multi-thousand-candle)
+    fetch from scratch. Used for the larger 1h/4h multi-symbol acquisitions where a full
+    from-scratch refetch is expensive; `load_or_fetch` (no resume) remains the one Checkpoint
+    1's campaign uses, unchanged, for the smaller 1D case."""
+    final_path = _cache_path(symbol, timeframe)
+    if final_path.exists() and not force_refresh:
+        with open(final_path) as f:
+            raw = json.load(f)
+        return [_candle_from_json(row) for row in raw["candles"]]
+
+    exch_symbol = symbol.replace("/", "")
+    tf_str = TIMEFRAME_MAP[timeframe]
+    partial_path = _partial_cache_path(symbol, timeframe)
+
+    candles: List[Candle] = []
+    cursor_ms = int(start_time.timestamp() * 1000)
+    end_ms = int(end_time.timestamp() * 1000)
+
+    if partial_path.exists() and not force_refresh:
+        with open(partial_path) as f:
+            partial = json.load(f)
+        candles = [_candle_from_json(row) for row in partial["candles"]]
+        cursor_ms = partial["next_cursor_ms"]
+        logger.info(
+            "Resuming interrupted fetch from checkpoint",
+            extra={"symbol": symbol, "timeframe": timeframe.value, "candles_so_far": len(candles)},
+        )
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    with httpx.Client(timeout=20.0, headers={"User-Agent": "AlphaResearchCampaign/1.0"}) as client:
+        while cursor_ms < end_ms:
+            resp = client.get(
+                f"{DATA_MIRROR_BASE_URL}/api/v3/klines",
+                params={
+                    "symbol": exch_symbol, "interval": tf_str,
+                    "startTime": cursor_ms, "endTime": end_ms, "limit": _KLINES_LIMIT,
+                },
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+            if not rows:
+                break
+
+            for item in rows:
+                candles.append(_parse_kline_row(item, exchange_id, symbol, timeframe))
+
+            last_close_ms = rows[-1][6]
+            next_cursor_ms = last_close_ms + 1
+            if next_cursor_ms <= cursor_ms:
+                break
+            cursor_ms = next_cursor_ms
+
+            # Checkpoint after every page so a crash loses at most one page of progress.
+            with open(partial_path, "w") as f:
+                json.dump({
+                    "symbol": symbol, "timeframe": timeframe.value,
+                    "next_cursor_ms": cursor_ms,
+                    "candles": [_candle_to_json(c) for c in candles],
+                }, f)
+
+            if len(rows) < _KLINES_LIMIT:
+                break
+            time.sleep(request_pause_seconds)
+
+    if not candles:
+        raise RuntimeError(f"NO_DATA_FETCHED: {symbol} {timeframe.value} returned zero real candles")
+
+    with open(final_path, "w") as f:
+        json.dump({
+            "symbol": symbol,
+            "timeframe": timeframe.value,
+            "source": f"{DATA_MIRROR_BASE_URL}/api/v3/klines",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "candle_count": len(candles),
+            "candles": [_candle_to_json(c) for c in candles],
+        }, f)
+    if partial_path.exists():
+        partial_path.unlink()
+
+    logger.info(
+        "Fetched real historical candles (resumable)",
+        extra={"symbol": symbol, "timeframe": timeframe.value, "candle_count": len(candles)},
+    )
     return candles
 
 
