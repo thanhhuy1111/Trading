@@ -53,6 +53,32 @@ from packages.features.models import FeatureSnapshot  # noqa: F401
 from packages.governance.strategy_router import RoutingDecision as StrategyRoute  # noqa: F401
 from packages.market_data.historical_quality import DatasetQualityReport  # noqa: F401
 
+__all__ = [
+    # Re-exports (see module docstring) — listed explicitly so static type checkers treat
+    # them as part of this module's public API, not as unused imports.
+    "RegimeAssessment",
+    "MarketDataset",
+    "TradeCandidate",
+    "EvidenceRecord",
+    "FeatureSnapshot",
+    "StrategyRoute",
+    "DatasetQualityReport",
+    # Entities defined in this module.
+    "AgentAssessment",
+    "CandidateOutcome",
+    "ModelPrediction",
+    "MarketContextAssessment",
+    "RankingResult",
+    "CorrelationSnapshot",
+    "PortfolioRiskDecision",
+    "TradeProposal",
+    "ShadowProposal",
+    "ShadowOutcome",
+    "DriftAssessment",
+    "ReadinessStatus",
+    "stable_checksum",
+]
+
 
 def _new_id() -> UUID:
     return uuid4()
