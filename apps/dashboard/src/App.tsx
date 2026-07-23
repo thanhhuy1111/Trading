@@ -75,8 +75,56 @@ interface PendingOrder {
   created_at: string;
 }
 
+// ─── AI Advisor + Recommendations (packages/chat_agent, apps/api/routers/{chat,recommendations}.py) ───
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+interface TradeProposal {
+  proposal_id: string;
+  symbol: string;
+  timeframe: string;
+  direction: string;
+  entry_reference: string;
+  stop_loss: string | null;
+  take_profit: string | null;
+  risk_reward_ratio: string | null;
+  calibrated_probability: string | null;
+  expected_net_return_bps: string | null;
+  evidence_status: string;
+  application_result_state: string;
+  approved_risk_pct: string | null;
+  reason_codes: string[];
+  proposal_expiry: string;
+}
+
+interface RecommendationResponse {
+  request_id: string;
+  generated_at: string;
+  application_result_state: string;
+  reason_codes: string[];
+  limitations: string[];
+  proposals: TradeProposal[];
+}
+
+interface ReadinessStatus {
+  architecture_readiness: string;
+  strategy_readiness: string;
+  model_readiness: string;
+  evidence_readiness: string;
+  shadow_readiness: string;
+  live_readiness: string;
+}
+
+// Dev-mode RBAC header (apps/api/deps.py: X-Principal-Id / X-Roles, defaults to anonymous
+// VIEWER when absent). No real identity provider exists yet in this system -- this is the
+// same documented, minimal header contract the backend itself defines, not a bypass of it.
+const ADVISOR_HEADERS = { 'Content-Type': 'application/json', 'X-Principal-Id': 'dashboard', 'X-Roles': 'OPERATOR' };
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'security' | 'observability' | 'lineage' | 'paper' | 'market_data' | 'data_quality' | 'features' | 'signals' | 'critic' | 'trade_intents' | 'risk_governor' | 'execution_monitor' | 'positions' | 'agents' | 'orders' | 'risk' | 'backtest' | 'config' | 'incidents'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'security' | 'observability' | 'lineage' | 'paper' | 'market_data' | 'data_quality' | 'features' | 'signals' | 'critic' | 'trade_intents' | 'risk_governor' | 'execution_monitor' | 'positions' | 'agents' | 'orders' | 'risk' | 'backtest' | 'config' | 'incidents' | 'advisor' | 'recommendations'>('overview');
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'vi');
   const t = useTranslation(lang);
   const toggleLang = () => {
@@ -108,6 +156,22 @@ export default function App() {
     current_drawdown_pct: 0.0,
     open_positions_count: 0
   });
+
+  // Advisor tab
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [advisorConfigured, setAdvisorConfigured] = useState(true);
+
+  // Recommendations tab
+  const [readiness, setReadiness] = useState<ReadinessStatus | null>(null);
+  const [recSymbols, setRecSymbols] = useState('BTC/USDT, ETH/USDT');
+  const [recTimeframe, setRecTimeframe] = useState('1d');
+  const [recLoading, setRecLoading] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [recResult, setRecResult] = useState<RecommendationResponse | null>(null);
 
   // Real live prices from Binance public REST API (via backend /market-data/live-prices)
   useEffect(() => {
@@ -160,6 +224,7 @@ export default function App() {
     fetchPendingOrders();
     fetchConfigs();
     fetchSymbols();
+    fetchReadiness();
     const interval = setInterval(() => {
       fetchStatus();
       fetchPortfolio();
@@ -300,6 +365,72 @@ export default function App() {
     }
   };
 
+  const fetchReadiness = async () => {
+    try {
+      const res = await fetch('/api/readiness', { headers: ADVISOR_HEADERS });
+      if (res.ok) {
+        setReadiness(await res.json());
+      }
+    } catch (e) {
+      // Fallback: leave last known readiness on screen
+    }
+  };
+
+  const handleSendChat = async () => {
+    const message = chatInput.trim();
+    if (!message || chatLoading) return;
+    setChatMessages((prev) => [...prev, { role: 'user', text: message }]);
+    setChatInput('');
+    setChatLoading(true);
+    setChatError(null);
+    try {
+      const res = await fetch('/api/v1/chat', {
+        method: 'POST',
+        headers: ADVISOR_HEADERS,
+        body: JSON.stringify({ conversation_id: chatConversationId, message }),
+      });
+      if (res.status === 503) {
+        setAdvisorConfigured(false);
+        setChatMessages((prev) => prev.slice(0, -1));
+        return;
+      }
+      if (!res.ok) {
+        setChatError(t('advisorError'));
+        return;
+      }
+      const data = await res.json();
+      setChatConversationId(data.conversation_id);
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: data.answer }]);
+    } catch (e) {
+      setChatError(t('advisorError'));
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleScan = async () => {
+    setRecLoading(true);
+    setRecError(null);
+    setRecResult(null);
+    try {
+      const symbolList = recSymbols.split(',').map((s) => s.trim()).filter(Boolean);
+      const res = await fetch('/api/recommendations/scan', {
+        method: 'POST',
+        headers: ADVISOR_HEADERS,
+        body: JSON.stringify({ symbols: symbolList, timeframe: recTimeframe }),
+      });
+      if (!res.ok) {
+        setRecError(t('scanError'));
+        return;
+      }
+      setRecResult(await res.json());
+    } catch (e) {
+      setRecError(t('scanError'));
+    } finally {
+      setRecLoading(false);
+    }
+  };
+
   const handleControlAction = async (action: 'start' | 'stop' | 'soft-stop' | 'hard-stop') => {
     if (action === 'hard-stop' && !showKillConfirm) {
       setShowKillConfirm(true);
@@ -426,6 +557,8 @@ export default function App() {
         <aside className="w-64 border-r border-slate-800 bg-slate-900/40 p-4 space-y-1">
           {[
             { id: 'overview',          label: t('navPnl'),           icon: '💰', isReal: true },
+            { id: 'advisor',           label: t('navAdvisor'),        icon: '🤖', isReal: true },
+            { id: 'recommendations',   label: t('navRecommendations'), icon: '🎯', isReal: true },
             { id: 'security',          label: t('navSecurity'),       icon: '🔒', isReal: true },
             { id: 'observability',     label: t('navObservability'),  icon: '🔭', isReal: true },
             { id: 'lineage',           label: t('navLineage'),        icon: '🔗', isReal: true },
@@ -1632,6 +1765,201 @@ export default function App() {
               <div className="glass-panel p-8 rounded-xl border border-slate-800 text-center text-slate-400 text-sm">
                 Zero active system incidents reported. Data Guardian operating normally.
               </div>
+            </div>
+          )}
+
+          {activeTab === 'advisor' && (
+            <div className="space-y-4 flex flex-col h-full">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white">{t('advisorTitle')}</h2>
+                  <p className="text-xs text-slate-400 mt-1">{t('advisorSubtitle')}</p>
+                </div>
+                <span className="px-2 py-1 rounded bg-emerald-950 text-xs font-mono text-emerald-400 border border-emerald-800">packages/chat_agent</span>
+              </div>
+
+              {!advisorConfigured && (
+                <div className="glass-panel p-4 rounded-xl border border-amber-800 bg-amber-950/30 text-amber-300 text-sm">
+                  {t('advisorNotConfigured')}
+                </div>
+              )}
+
+              <div className="glass-panel rounded-xl border border-slate-800 flex flex-col flex-1 min-h-[420px]">
+                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                  {chatMessages.length === 0 && (
+                    <p className="text-slate-500 text-sm text-center mt-10">{t('advisorEmpty')}</p>
+                  )}
+                  {chatMessages.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                          m.role === 'user'
+                            ? 'bg-cyan-600/90 text-white'
+                            : 'bg-slate-800/80 text-slate-200 border border-slate-700'
+                        }`}
+                      >
+                        {m.text}
+                      </div>
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div className="flex justify-start">
+                      <div className="rounded-lg px-4 py-2.5 text-sm bg-slate-800/80 text-slate-400 border border-slate-700">
+                        {t('advisorSending')}
+                      </div>
+                    </div>
+                  )}
+                  {chatError && <p className="text-red-400 text-xs">{chatError}</p>}
+                </div>
+                <div className="border-t border-slate-800 p-4 flex gap-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSendChat(); }}
+                    placeholder={t('advisorPlaceholder')}
+                    disabled={chatLoading || !advisorConfigured}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleSendChat}
+                    disabled={chatLoading || !chatInput.trim() || !advisorConfigured}
+                    className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition"
+                  >
+                    {t('advisorSend')}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 text-center">{t('advisorDisclaimer')}</p>
+            </div>
+          )}
+
+          {activeTab === 'recommendations' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white">{t('recommendationsTitle')}</h2>
+                  <p className="text-xs text-slate-400 mt-1">{t('recommendationsSubtitle')}</p>
+                </div>
+                <span className="px-2 py-1 rounded bg-emerald-950 text-xs font-mono text-emerald-400 border border-emerald-800">apps/api/routers/recommendations.py</span>
+              </div>
+
+              {readiness && (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs font-mono">
+                  {([
+                    ['architecture_readiness', readiness.architecture_readiness],
+                    ['strategy_readiness', readiness.strategy_readiness],
+                    ['model_readiness', readiness.model_readiness],
+                    ['evidence_readiness', readiness.evidence_readiness],
+                    ['shadow_readiness', readiness.shadow_readiness],
+                    ['live_readiness', readiness.live_readiness],
+                  ] as const).map(([key, value]) => (
+                    <div key={key} className="glass-panel p-3 rounded-xl border border-slate-800">
+                      <p className="text-slate-500 text-[10px] uppercase">{key.replace('_', ' ')}</p>
+                      <p className={`font-bold text-xs mt-1 ${value === 'DISABLED' ? 'text-red-400' : value === 'READY' ? 'text-emerald-400' : 'text-amber-400'}`}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="glass-panel p-5 rounded-xl border border-slate-800 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-slate-400 block mb-1">{t('scanSymbolsLabel')}</label>
+                    <input
+                      type="text"
+                      value={recSymbols}
+                      onChange={(e) => setRecSymbols(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">{t('scanTimeframeLabel')}</label>
+                    <select
+                      value={recTimeframe}
+                      onChange={(e) => setRecTimeframe(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="1d">1d</option>
+                      <option value="4h">4h</option>
+                      <option value="1h">1h</option>
+                      <option value="15m">15m</option>
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleScan}
+                  disabled={recLoading}
+                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition"
+                >
+                  {recLoading ? t('scanning') : t('scanBtn')}
+                </button>
+                {recError && <p className="text-red-400 text-xs">{recError}</p>}
+              </div>
+
+              {recResult && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-slate-400">
+                      {t('colResultState')}: <span className="text-cyan-400">{recResult.application_result_state}</span>
+                    </span>
+                    <span className="text-xs font-mono text-slate-500">{recResult.proposals.length} {t('proposalsFound')}</span>
+                  </div>
+
+                  {recResult.proposals.length === 0 ? (
+                    <div className="glass-panel p-8 rounded-xl border border-slate-800 text-center text-slate-400 text-sm space-y-2">
+                      <p>{t('noProposals')}</p>
+                      {recResult.reason_codes.length > 0 && (
+                        <p className="text-[11px] text-slate-500 font-mono">{t('reasonCodes')}: {recResult.reason_codes.join(', ')}</p>
+                      )}
+                    </div>
+                  ) : (
+                    recResult.proposals.map((p) => (
+                      <div key={p.proposal_id} className="glass-panel p-5 rounded-xl border border-slate-800 space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                          <h3 className="font-bold text-white text-base">{p.symbol} — {p.direction} ({p.timeframe})</h3>
+                          <div className="flex gap-2">
+                            {p.application_result_state !== 'APPROVED_PROPOSAL' && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-800">{t('researchOnly')}</span>
+                            )}
+                            <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">{p.evidence_status}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colEntry')}</p>
+                            <p className="text-white font-bold text-sm">{p.entry_reference}</p>
+                          </div>
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colTakeProfit')}</p>
+                            <p className="text-emerald-400 font-bold text-sm">{p.take_profit ?? '—'}</p>
+                          </div>
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colRiskReward')}</p>
+                            <p className="text-white font-bold text-sm">{p.risk_reward_ratio ?? '—'}</p>
+                          </div>
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colProbability')}</p>
+                            <p className="text-cyan-400 font-bold text-sm">{p.calibrated_probability ?? '—'}</p>
+                          </div>
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colNetReturn')}</p>
+                            <p className="text-white font-bold text-sm">{p.expected_net_return_bps ?? '—'} bps</p>
+                          </div>
+                          <div className="bg-slate-900/60 p-3 rounded border border-slate-800">
+                            <p className="text-slate-400">{t('colApprovedRisk')}</p>
+                            <p className="text-amber-400 font-bold text-sm">{p.approved_risk_pct ?? '—'}</p>
+                          </div>
+                        </div>
+                        {p.reason_codes.length > 0 && (
+                          <p className="text-[11px] text-slate-500 font-mono">{t('reasonCodes')}: {p.reason_codes.join(', ')}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
         </main>
