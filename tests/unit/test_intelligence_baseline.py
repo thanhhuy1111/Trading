@@ -6,7 +6,8 @@ from decimal import Decimal
 from uuid import uuid4
 
 from packages.candidates.models import CandidateStatus, TradeCandidate
-from packages.domain.enums import EvidenceStatus, MetaLabelDecision, RankingStatus
+from packages.domain.enums import MetaLabelDecision, RankingStatus
+from packages.evidence.models import EvidenceStatus
 from packages.intelligence.correlation import BaselineCorrelationService
 from packages.intelligence.market_context import BaselineMarketContextService
 from packages.intelligence.meta_label import (

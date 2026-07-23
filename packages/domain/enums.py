@@ -68,17 +68,6 @@ class CandidateStatus(str, Enum):
     CLOSED = "CLOSED"
 
 
-class EvidenceStatus(str, Enum):
-    UNIVERSAL_APPROVED = "UNIVERSAL_APPROVED"
-    ASSET_SPECIFIC_APPROVED = "ASSET_SPECIFIC_APPROVED"
-    RESEARCH_ONLY = "RESEARCH_ONLY"
-    INSUFFICIENT = "INSUFFICIENT"
-    REJECTED = "REJECTED"
-    DEGRADED = "DEGRADED"
-    STALE = "STALE"
-    DISABLED = "DISABLED"
-
-
 class EvidenceLookupResult(str, Enum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"

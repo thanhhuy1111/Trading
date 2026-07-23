@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from packages.domain.enums import EvidenceStatus
+from packages.evidence.models import EvidenceStatus
 
 
 class StrategySleeve(BaseModel):

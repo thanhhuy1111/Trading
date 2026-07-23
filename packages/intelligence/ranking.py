@@ -11,7 +11,8 @@ from typing import List, Optional
 from uuid import UUID
 
 from packages.domain.entities import CorrelationSnapshot, EvidenceRecord, RankingResult
-from packages.domain.enums import EvidenceStatus, RankingStatus
+from packages.domain.enums import RankingStatus
+from packages.evidence.models import EvidenceStatus
 
 RANKING_VERSION = "ranking_v1"
 

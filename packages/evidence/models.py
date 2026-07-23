@@ -33,6 +33,13 @@ class EvidenceStatus(str, Enum):
     # Was previously APPROVED but has aged past the freshness window or been superseded by a
     # newer dataset/gate/code version for the same key.
     STALE = "STALE"
+    # Was APPROVED but live/shadow monitoring detected a real decay signal (e.g. calibration
+    # drift, realized-vs-expected divergence) — worse than merely aged out, better than a
+    # clean REJECTED (Phase 11 monitoring transitions APPROVED -> DEGRADED -> STALE -> DISABLED).
+    DEGRADED = "DEGRADED"
+    # Explicitly turned off by a human/ops action — distinct from REJECTED (never cleared the
+    # gate) and STALE (aged out on its own); DISABLED is a deliberate override.
+    DISABLED = "DISABLED"
 
 
 class EvidenceKey(NamedTuple):
