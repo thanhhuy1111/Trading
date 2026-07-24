@@ -146,8 +146,11 @@ const translations = {
   chartLoading:            { en: 'Loading chart...', vi: 'Đang tải biểu đồ...' },
   chartNoData:             { en: 'No candle data available.', vi: 'Không có dữ liệu nến.' },
   chartLoadError:          { en: 'Could not load chart data.', vi: 'Không tải được dữ liệu biểu đồ.' },
-  chartProjectionLabel:    { en: 'Technical projection (EMA-20 slope) — not an AI/ML forecast.', vi: 'Đường chiếu kỹ thuật (EMA-20 slope) — không phải dự đoán AI/ML.' },
-  chartProjectionUnavailable: { en: 'Not enough history to project a trend line yet.', vi: 'Chưa đủ dữ liệu để chiếu đường xu hướng.' },
+  chartProjectionLabel:    { en: 'Walk-forward validated model', vi: 'Mô hình đã kiểm định walk-forward' },
+  chartProjectionNoModel:  { en: 'No model has been trained for this symbol/timeframe yet.', vi: 'Chưa có mô hình nào được huấn luyện cho cặp/khung thời gian này.' },
+  chartProjectionNotApproved: { en: 'A model was trained and evaluated out-of-sample, but did not beat the naive baseline — no line is shown so nothing false is implied.', vi: 'Đã huấn luyện và kiểm định mô hình out-of-sample, nhưng không vượt qua baseline ngây thơ — không hiển thị đường để tránh gây hiểu nhầm.' },
+  chartOosMape:            { en: 'OOS MAPE', vi: 'MAPE OOS' },
+  chartOosDirAcc:          { en: 'directional accuracy', vi: 'độ chính xác chiều' },
 
   // ─── Config tab ───────────────────────────────────────────
   configTitle:       { en: 'Dynamic Configuration Manager', vi: 'Quản Lý Cấu Hình Động' },

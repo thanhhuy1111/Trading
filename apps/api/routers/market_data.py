@@ -1,6 +1,8 @@
+import json
+import math
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query
@@ -12,6 +14,7 @@ from packages.market_data.adapters.binance import BinancePublicMarketDataProvide
 from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
 from packages.market_data.models import Candle, Timeframe
 from packages.market_data.symbol_registry import symbol_registry
+from packages.retraining.price_projection import artifact_path
 
 router = APIRouter(prefix="/market-data", tags=["Market Data Platform"])
 
@@ -108,50 +111,99 @@ async def get_candles(
     return [_candle_to_dict(c) for c in candles]
 
 
+def _load_price_model_artifact(symbol: str, timeframe: Timeframe) -> Optional[Dict[str, Any]]:
+    path = artifact_path(symbol, timeframe)
+    if not path.exists():
+        return None
+    try:
+        data: Dict[str, Any] = json.loads(path.read_text())
+        return data
+    except (OSError, ValueError):
+        return None
+
+
 @router.get("/trend-projection")
 async def get_trend_projection(
     symbol: str = Query("BTC/USDT"),
     timeframe: Timeframe = Timeframe.M1,
     projection_bars: int = Query(12, ge=1, le=30),
 ) -> Dict[str, Any]:
-    """A technical extrapolation of the EMA-20 slope -- the SAME feature
-    packages.agents.trend.TrendAgent already reads to decide LONG/SHORT -- projected forward
-    geometrically from the last real close. This is a technical heuristic, not an AI/ML
-    price forecast, and the response says so explicitly via `basis`. Returns
-    `available: false` (never a fabricated flat line) when there isn't enough real history
-    to compute the slope."""
+    """Real, walk-forward-validated Ridge regression predictions from
+    packages.retraining.price_projection. A horizon is only ever served if it demonstrably
+    and consistently beat the naive "price doesn't change" baseline out-of-sample, across
+    every walk-forward fold -- never just on average. If no trained artifact exists yet for
+    this symbol/timeframe, or no horizon in it is approved, this returns `available: false`
+    (`model_status: "NO_TRAINED_MODEL"`). There is deliberately NO fallback to a simpler
+    heuristic in that case: this endpoint previously extrapolated the EMA-20 slope, which a
+    real out-of-sample check showed has no predictive edge (worse MAPE than the naive
+    baseline at every horizon, ~50-54% directional accuracy) -- silently falling back to it
+    here would recreate exactly the fabricated-confidence failure mode this project avoids
+    everywhere else."""
     now = datetime.now(timezone.utc)
     candles = await _fetch_real_candles(symbol, timeframe, limit=100)
     if not candles:
-        return {"available": False, "reason": "NO_MARKET_DATA_AVAILABLE", "points": []}
+        return {
+            "available": False, "reason": "NO_MARKET_DATA_AVAILABLE", "model_status": "NO_TRAINED_MODEL", "points": [],
+        }
+
+    artifact = _load_price_model_artifact(symbol, timeframe)
+    if artifact is None:
+        return {"available": False, "reason": "NO_TRAINED_MODEL", "model_status": "NO_TRAINED_MODEL", "points": []}
 
     sorted_candles = sorted(candles, key=lambda c: c.open_time)
     last_candle = sorted_candles[-1]
-
     request = FeatureComputationRequest(
         exchange="binance", symbol=symbol, timeframe=timeframe,
         feature_set="standard_v1", as_of_time=last_candle.close_time,
     )
     snapshot = feature_pipeline.compute(request, list(sorted_candles))
-    slope_raw = snapshot.values.get("ema_20_slope")
-    if slope_raw is None:
-        return {"available": False, "reason": "INSUFFICIENT_HISTORY", "points": []}
+    feature_names: List[str] = artifact["feature_names"]
+    raw_features = [snapshot.values.get(name) for name in feature_names]
+    if any(v is None for v in raw_features):
+        return {"available": False, "reason": "INSUFFICIENT_HISTORY", "model_status": "NO_TRAINED_MODEL", "points": []}
+    features = [float(v) for v in raw_features]  # type: ignore[arg-type]
 
-    slope = Decimal(str(slope_raw))
-    last_close = last_candle.close_price
     interval = TIMEFRAME_INTERVAL[timeframe]
+    last_close = float(last_candle.close_price)
+    horizons: Dict[str, Any] = artifact["horizons"]
+    approved_count = sum(1 for h in horizons.values() if h["approved"])
     points = []
-    for t in range(1, projection_bars + 1):
-        projected_price = last_close * (Decimal("1") + slope) ** t
+    for h_str, h_data in sorted(horizons.items(), key=lambda kv: int(kv[0])):
+        h = int(h_str)
+        if not h_data["approved"] or h > projection_bars:
+            continue
+        scaled = [
+            (f - m) / s
+            for f, m, s in zip(features, h_data["feature_mean"], h_data["feature_scale"], strict=True)
+        ]
+        predicted_log_return = h_data["intercept"] + sum(
+            c * x for c, x in zip(h_data["coefficients"], scaled, strict=True)
+        )
+        projected_price = last_close * math.exp(predicted_log_return)
         points.append({
-            "time": (last_candle.close_time + interval * t).isoformat(),
+            "time": (last_candle.close_time + interval * h).isoformat(),
             "projected_price": str(projected_price),
+            "horizon_bars": h,
+            "oos_mape": h_data["oos_mape"],
+            "oos_directional_accuracy": h_data["oos_directional_accuracy"],
         })
+
+    if not points:
+        # A model WAS trained and evaluated for this symbol/timeframe -- it just didn't
+        # clear the bar on real out-of-sample data. Distinct from "NO_TRAINED_MODEL" (no
+        # artifact file at all) so the frontend/caller can tell "never attempted" apart from
+        # "attempted, honestly rejected" -- both are `available: false`, but they're not the
+        # same fact.
+        return {
+            "available": False, "reason": "NO_APPROVED_HORIZON", "model_status": "NO_APPROVED_MODEL",
+            "model_trained_at": artifact["trained_at"], "points": [],
+        }
 
     return {
         "available": True,
-        "basis": "ema_20_slope",
-        "slope": str(slope),
+        "basis": "ridge_regression_v1",
+        "model_status": "FULLY_APPROVED" if approved_count == len(horizons) else "PARTIAL",
+        "model_trained_at": artifact["trained_at"],
         "as_of_time": now.isoformat(),
         "points": points,
     }

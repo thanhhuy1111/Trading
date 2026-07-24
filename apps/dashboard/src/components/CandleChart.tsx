@@ -15,13 +15,17 @@ interface RawCandle {
 interface TrendProjectionPoint {
   time: string;
   projected_price: string;
+  horizon_bars: number;
+  oos_mape: number;
+  oos_directional_accuracy: number;
 }
 
 interface TrendProjectionResponse {
   available: boolean;
   reason?: string;
   basis?: string;
-  slope?: string;
+  model_status?: 'NO_TRAINED_MODEL' | 'NO_APPROVED_MODEL' | 'PARTIAL' | 'FULLY_APPROVED';
+  model_trained_at?: string;
   points: TrendProjectionPoint[];
 }
 
@@ -38,6 +42,8 @@ interface ChartRow {
   close?: number;
   range?: [number, number];
   projected?: number;
+  oosMape?: number;
+  oosDirAcc?: number;
 }
 
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
@@ -88,7 +94,12 @@ function ChartTooltip({ active, payload, t }: any) {
     return (
       <div className="rounded-lg border border-white/10 bg-slate-950/95 px-3 py-2 text-[11px] shadow-xl">
         <p className="text-slate-500 mb-1">{row.timeLabel}</p>
-        <p className="text-amber-400 font-mono">{t('chartProjectionLabel').split(' (')[0]}: {row.projected.toFixed(2)}</p>
+        <p className="text-amber-400 font-mono">{row.projected.toFixed(2)}</p>
+        {row.oosMape !== undefined && (
+          <p className="text-slate-500 font-mono mt-1">
+            {t('chartOosMape')} {(row.oosMape * 100).toFixed(2)}% · {(row.oosDirAcc! * 100).toFixed(1)}% {t('chartOosDirAcc')}
+          </p>
+        )}
       </div>
     );
   }
@@ -143,6 +154,8 @@ export default function CandleChart({ lang }: { lang: Lang }) {
               time: new Date(p.time).getTime(),
               timeLabel: new Date(p.time).toLocaleString(),
               projected: parseFloat(p.projected_price),
+              oosMape: p.oos_mape,
+              oosDirAcc: p.oos_directional_accuracy,
             });
           }
         }
@@ -245,9 +258,19 @@ export default function CandleChart({ lang }: { lang: Lang }) {
       </div>
 
       <p className="px-5 py-2.5 text-[11px] text-slate-600 border-t border-white/[0.06]">
-        {projection?.available
-          ? `${t('chartProjectionLabel')} · slope ${projection.slope}`
-          : t('chartProjectionUnavailable')}
+        {projection?.available && projection.points.length > 0 ? (
+          <>
+            <span className="text-amber-500">{t('chartProjectionLabel')}</span>
+            {' — '}
+            {t('chartOosMape')} {(projection.points[0].oos_mape * 100).toFixed(2)}%,{' '}
+            {(projection.points[0].oos_directional_accuracy * 100).toFixed(1)}% {t('chartOosDirAcc')}
+            {` (h+${projection.points[0].horizon_bars})`}
+          </>
+        ) : projection?.model_status === 'NO_APPROVED_MODEL' ? (
+          t('chartProjectionNotApproved')
+        ) : (
+          t('chartProjectionNoModel')
+        )}
       </p>
     </div>
   );
