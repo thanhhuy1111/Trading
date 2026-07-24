@@ -28,12 +28,20 @@ class InvalidStatusTransitionError(Exception):
     pass
 
 
+class DuplicateRegistryEntryError(Exception):
+    pass
+
+
 class ArtifactRegistry:
     def __init__(self, registry_name: str) -> None:
         self.registry_name = registry_name
         self._entries: Dict[Tuple[str, str], RegistryEntry] = {}
 
     def register(self, entry: RegistryEntry) -> RegistryEntry:
+        if entry.key() in self._entries:
+            raise DuplicateRegistryEntryError(
+                f"REGISTRY_ENTRY_EXISTS: {self.registry_name}:{entry.name}:{entry.version}"
+            )
         self._entries[entry.key()] = entry
         return entry
 
@@ -56,7 +64,7 @@ class ArtifactRegistry:
         updated = entry.model_copy(update={
             "status": new_status,
             "updated_at": datetime.now(timezone.utc),
-            "reason_codes": list(reason_codes or []),
+            "reason_codes": tuple(reason_codes or []),
         })
         self._entries[entry.key()] = updated
         return updated

@@ -4,8 +4,8 @@
 
 - Branch: `main`
 - Current phase: Phase 4 — XGBoost
-- Last completed task: 4C — Training & Walk-forward
-- Next task: 4D — Approval & Artifact
+- Last completed task: 4D — Approval & Artifact
+- Next task: 4E — Runtime Inference
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -226,16 +226,80 @@ CRITICAL/HIGH/MEDIUM; reviewer không sửa file.
 Không tạo artifact, approval registry/service, runtime serving, private API, live trading,
 order path hoặc kết quả hiệu quả nghiên cứu giả.
 
+## Phase 4D — Approval & Artifact
+
+Status: **COMPLETE**
+
+### Files changed
+
+- `packages/registries/models.py`
+- `packages/registries/registry.py`
+- `packages/retraining/xgboost_approval.py`
+- `packages/retraining/xgboost_artifacts.py`
+- `tests/unit/test_registries.py`
+- `tests/unit/test_xgboost_approval.py`
+- campaign progress/quality/task docs.
+
+### Delivered
+
+- Dedicated approval service recomputes the complete deterministic Phase 4C training report
+  from the immutable dataset and compares that evidence exactly before any approval.
+- Caller model is bound to the recomputed model through native XGBoost JSON bytes; publication
+  writes only the trusted recomputed model, never the caller-supplied object.
+- Every fold is independently re-audited for partition checksums, train-only threshold,
+  labels, validation-only calibration, comparator semantics, probabilities, metrics and all
+  strict performance gates.
+- Registry insertion is append-only and entries are deeply immutable, so duplicate overwrite,
+  alias mutation and rejected resurrection are blocked. Registry status alone is still not a
+  trusted approval: Phase 4E must require the private service receipt too.
+- Exactly five files are atomically published: `model.json`, `metadata.json`,
+  `feature_schema.json`, `evaluation.json`, `approval.json`. Native JSON is round-tripped over
+  the complete dataset and all four approval inputs are SHA-256 checksummed.
+- Artifact payloads use strict, extra-forbidden Pydantic schemas and exact semantic cross-file
+  validation for identity, mode, feature sets/versions/dtypes, training recipe, calibration,
+  gate, versions and timestamps. Symlinked artifact parents are rejected.
+- Rejected valid evidence remains auditable. Invalid caller model evidence is rejected while
+  the safe recomputed artifact is persisted; invalid/insufficient dataset evidence receives a
+  rejected registry entry/receipt without inventing a model.
+
+The strong and weak fixtures are synthetic contract tests only. The strong fixture exercises
+the approval path but is not market-performance evidence and no persistent approved model or
+model weight was added to the repository.
+
+### Independent safety review
+
+Read-only review initially identified model-binding, schema, registry resurrection, rejected
+audit, sub-tolerance metric-boundary and symlink-escape issues. All CRITICAL/HIGH/MEDIUM
+findings were fixed with regressions. Final review found no remaining CRITICAL/HIGH/MEDIUM;
+reviewer did not edit files.
+
+### Verification
+
+- Focused registry/approval plus compatibility tests:
+  `.venv/bin/pytest tests/unit/test_registries.py
+  tests/unit/test_xgboost_approval.py tests/unit/test_retraining_workflow.py
+  tests/unit/test_recommendations_api.py -q` → 38 passed.
+- Full pytest: `.venv/bin/pytest tests/ -q`
+  → 534 passed, 12 skipped, 1 failed.
+- The sole failure remains the known baseline
+  `tests/integration/test_db_migration.py::test_alembic_migration_lifecycle` because
+  `infra/migrations/alembic.ini` is absent.
+- `.venv/bin/ruff check .` → clean.
+- `.venv/bin/mypy packages/ apps/` → 180 errors in 67 files, unchanged baseline.
+- `git diff --check` → clean.
+- Safety flags remain `False/False/False`.
+
 ### Next task
 
-Thực hiện Phase 4D — Approval & Artifact theo
-`docs/campaign/tasks/PHASE_04_XGBOOST.md`. Gate phải recompute từ immutable evidence và có thể
-kết thúc `REJECTED`; không approve để unblock runtime.
+Implement Phase 4E read-only runtime inference. It must dual-verify exact registry state,
+trusted receipt and artifact; otherwise return `UNAVAILABLE` with a stable reason code.
 
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).
 - Phase 4B implementation commit: `f740f1b`
   (`feat: complete Phase 4B point-in-time dataset`).
+- Phase 4C implementation commit: `217d6e7`
+  (`feat: complete Phase 4C walk-forward training`).
 - Push status: pushed successfully to `origin/main` on 2026-07-24.
 - Pull request: not created, as required.

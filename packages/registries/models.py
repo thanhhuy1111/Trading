@@ -1,15 +1,18 @@
 """Phase 3: registry entry model shared by all seven artifact registries."""
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, Tuple
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from packages.common.immutable import FrozenMapping
 from packages.domain.enums import RegistryEntryStatus
 
 
 class RegistryEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     entry_id: UUID = Field(default_factory=uuid4)
     name: str
     version: str
@@ -20,10 +23,12 @@ class RegistryEntry(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     code_commit: Optional[str] = None
     configuration_hash: Optional[str] = None
-    dependencies: Dict[str, str] = Field(default_factory=dict)
-    compatible_symbols: List[str] = Field(default_factory=list)   # empty == universal
-    compatible_timeframes: List[str] = Field(default_factory=list)  # empty == universal
-    reason_codes: List[str] = Field(default_factory=list)
+    dependencies: FrozenMapping[str, str] = Field(
+        default_factory=lambda: FrozenMapping({})
+    )
+    compatible_symbols: Tuple[str, ...] = ()  # empty == universal
+    compatible_timeframes: Tuple[str, ...] = ()  # empty == universal
+    reason_codes: Tuple[str, ...] = ()
 
     def key(self) -> Tuple[str, str]:
         return (self.name, self.version)

@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from packages.backtest.walk_forward import WalkForwardRunner, walk_forward_runner
+from packages.common.immutable import FrozenMapping
 from packages.domain.enums import ModelType, RegistryEntryStatus
 from packages.evidence.models import EvidenceKey, EvidenceRecord, EvidenceStatus
 from packages.evidence.store import EvidenceStore
@@ -192,12 +193,12 @@ class RetrainingWorkflow:
             artifact_location=f"inline://{job_id}",
             artifact_checksum=hashlib.sha256(json.dumps(artifact, sort_keys=True).encode("utf-8")).hexdigest(),
             code_commit=code_commit, configuration_hash=strategy_config_hash,
-            compatible_symbols=[symbol], compatible_timeframes=[timeframe.value],
-            dependencies={
+            compatible_symbols=(symbol,), compatible_timeframes=(timeframe.value,),
+            dependencies=FrozenMapping({
                 "dataset_checksum": dataset_checksum, "feature_version": FEATURE_VERSION,
                 "label_version": LABEL_VERSION,
-            },
-            reason_codes=["RETRAINING_JOB_OUTPUT"],
+            }),
+            reason_codes=("RETRAINING_JOB_OUTPUT",),
         ))
         stages.append("ARTIFACT_PUBLISHED_RESEARCH_ONLY")
 

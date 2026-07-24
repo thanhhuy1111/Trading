@@ -619,18 +619,18 @@ gộp các phase hoặc mở rộng scope âm thầm.
 
 ## 19. Acceptance criteria Phase 4D
 
-- [ ] `XGBoostApprovalService` là write authority duy nhất, recompute toàn gate từ immutable
+- [x] `XGBoostApprovalService` là write authority duy nhất, recompute toàn gate từ immutable
   inputs, từ chối duplicate/overwrite và direct-approved injection.
-- [ ] Tất cả per-fold gates, leakage/schema/probability/calibration checks phải pass mới
+- [x] Tất cả per-fold gates, leakage/schema/probability/calibration checks phải pass mới
   transition tới `APPROVED`; mọi fail tạo `REJECTED` với reason codes.
-- [ ] Weak/noise model, forged approval JSON, checksum mismatch, schema mismatch, duplicate
+- [x] Weak/noise model, forged approval JSON, checksum mismatch, schema mismatch, duplicate
   version và rejected resurrection đều safe reject.
-- [ ] Năm artifact files được write atomic dưới `tmp_path` trong tests; native JSON round-trip
+- [x] Năm artifact files được write atomic dưới `tmp_path` trong tests; native JSON round-trip
   tái tạo calibrated probabilities.
-- [ ] Rejected artifact không được load/publish approved; không approve chỉ để unblock 4E.
-- [ ] Model weights dưới `data/` không force-add vào Git; không chứa secret.
-- [ ] Không triển khai runtime API trong 4D.
-- [ ] Targeted/full verification và progress update hoàn tất, safety flags không đổi.
+- [x] Rejected artifact không được load/publish approved; không approve chỉ để unblock 4E.
+- [x] Model weights dưới `data/` không force-add vào Git; không chứa secret.
+- [x] Không triển khai runtime API trong 4D.
+- [x] Targeted/full verification và progress update hoàn tất, safety flags không đổi.
 
 ## 20. Acceptance criteria Phase 4E
 
@@ -673,8 +673,9 @@ gộp các phase hoặc mở rộng scope âm thầm.
    nhưng dependency versions cần được pin/bounded để CI tái lập.
 4. Model performance/approval không được giả định; Phase 4D có thể kết thúc bằng REJECTED và
    Phase 4E phải trả `NO_APPROVED_MODEL`.
-5. In-memory generic registry không tự persistence và cho direct-status registration; service
-   Phase 4D/4E phải bọc thêm invariant, không expose raw registry mutation làm approval path.
+5. In-memory generic registry không tự persistence và vẫn cho initial direct-status
+   registration; Phase 4D đã làm entry append-only/deeply immutable, nhưng Phase 4E vẫn phải
+   dual-verify private approval receipt để direct injection không thành trusted approval.
 6. Existing meta-label runtime chấp nhận `RESEARCH_ONLY`; XGBoost runtime phải độc lập và
    approved-only. Việc migrate meta-label service cũ ngoài Phase 4 nếu không trực tiếp cần cho
    quantitative prediction contract.

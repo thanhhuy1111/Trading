@@ -2,6 +2,7 @@
 only, and never fuzzy-match compatibility scope."""
 
 import pytest
+from pydantic import ValidationError
 
 from packages.domain.enums import RegistryEntryStatus
 from packages.registries.instances import (
@@ -14,7 +15,11 @@ from packages.registries.instances import (
     universe_registry,
 )
 from packages.registries.models import RegistryEntry
-from packages.registries.registry import ArtifactRegistry, InvalidStatusTransitionError
+from packages.registries.registry import (
+    ArtifactRegistry,
+    DuplicateRegistryEntryError,
+    InvalidStatusTransitionError,
+)
 
 
 def test_seven_registries_are_independent_instances() -> None:
@@ -40,6 +45,37 @@ def test_valid_status_transition_updates_entry() -> None:
     reg.register(RegistryEntry(name="baseline", version="1.0.0", status=RegistryEntryStatus.DRAFT))
     updated = reg.transition_status("baseline", "1.0.0", RegistryEntryStatus.RESEARCH_ONLY)
     assert updated.status == RegistryEntryStatus.RESEARCH_ONLY
+
+
+def test_duplicate_registration_is_append_only() -> None:
+    reg = ArtifactRegistry("test")
+    source = RegistryEntry(
+        name="baseline",
+        version="1.0.0",
+        status=RegistryEntryStatus.REJECTED,
+        dependencies={"dataset": "immutable"},
+        compatible_symbols=["BTC/USDT"],
+        reason_codes=["FAILED_GATE"],
+    )
+    reg.register(source)
+    with pytest.raises(DuplicateRegistryEntryError):
+        reg.register(
+            RegistryEntry(
+                name="baseline",
+                version="1.0.0",
+                status=RegistryEntryStatus.APPROVED,
+            )
+        )
+    stored = reg.get("baseline", "1.0.0")
+    assert stored is not None
+    assert stored.status == RegistryEntryStatus.REJECTED
+    with pytest.raises(ValidationError):
+        source.status = RegistryEntryStatus.APPROVED
+    with pytest.raises(TypeError):
+        source.dependencies["dataset"] = "forged"
+    with pytest.raises(AttributeError):
+        source.compatible_symbols.append("ETH/USDT")  # type: ignore[attr-defined]
+    assert reg.get("baseline", "1.0.0") == stored
 
 
 def test_invalid_status_transition_is_rejected() -> None:
