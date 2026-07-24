@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 9 — Manager Agent
-- Last completed task: Phase 8 — Verification & Risk
-- Next task: Phase 9 — Manager Agent
+- Current phase: Phase 10 — API & Dashboard
+- Last completed task: Phase 9 — Manager Agent
+- Next task: Phase 10 — API & Dashboard
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -504,6 +504,40 @@ review reported none remaining.
 ### Next task
 
 Phase 9 — deterministic Manager gating and strict schema synthesis.
+
+## Phase 9 — Manager Agent
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Deterministic synthesis with exact specialist/debate/verification/risk analysis-time
+  matching and strict `LONG/HOLD/NO_DECISION` schema.
+- Exact Verification and Risk authority chain with result digest relationships; Manager
+  re-verifies canonical upstream inputs and rejects tampering/replay.
+- No confidence or evidence on `NO_DECISION`; valid confidence is quantitative
+  evidence-derived and Risk-approved.
+- Specialist and debate invalidating conditions are retained; valid decisions cannot omit
+  them.
+- Immutable append-only snapshot with canonical fingerprint/idempotency.
+- SHORT remains explicitly disabled pending short-specific risk/accounting approval.
+
+### Independent safety review
+
+Review identified authority-chain replay, missing invalidation lineage, unsafe naive-time
+handling and order-sensitive idempotency. All HIGH/MEDIUM findings were fixed; final review
+reported none remaining.
+
+### Verification
+
+- Manager/verification/risk focused tests: 7 passed.
+- Full pytest: 573 passed, 12 skipped, 1 known Alembic failure.
+- Ruff/diff clean; mypy remains baseline; safety flags unchanged.
+
+### Next task
+
+Phase 10 — expose the analysis surface through the existing API/dashboard stack with strict
+error and empty-state contracts.
 
 ### Commit and push
 

@@ -251,14 +251,15 @@ def _risk_request(**updates) -> AnalysisRiskRequest:
 
 
 def test_verification_and_risk_can_approve_only_valid_inputs() -> None:
-    verification = VerificationAgent(_registry()).verify(
+    verifier = VerificationAgent(_registry())
+    verification = verifier.verify(
         analysis_id="analysis-1",
         as_of_time=T0,
         assessments=_assessments(),
         debate=_debate(),
     )
     assert verification.decision == VerificationDecision.VERIFIED
-    risk = AnalysisRiskEngine().evaluate(_risk_request(), verification)
+    risk = AnalysisRiskEngine(verifier).evaluate(_risk_request(), verification)
     assert risk.allow_trade is True
     assert risk.approved_quantity > 0
 
@@ -286,13 +287,14 @@ def test_future_or_fabricated_evidence_is_rejected() -> None:
 
 
 def test_verification_and_each_risk_gate_have_veto_authority() -> None:
-    verified = VerificationAgent(_registry()).verify(
+    verifier = VerificationAgent(_registry())
+    verified = verifier.verify(
         analysis_id="analysis-1",
         as_of_time=T0,
         assessments=_assessments(),
         debate=_debate(),
     )
-    rejected = VerificationAgent(_registry()).verify(
+    rejected = verifier.verify(
         analysis_id="analysis-1",
         as_of_time=T0,
         assessments=(),
@@ -317,14 +319,13 @@ def test_verification_and_each_risk_gate_have_veto_authority() -> None:
             "EXPOSURE_LIMIT_EXCEEDED",
         ),
     ):
-        result = AnalysisRiskEngine().evaluate(request, verification)
+        result = AnalysisRiskEngine(verifier).evaluate(request, verification)
         assert result.allow_trade is False
         assert result.approved_quantity == 0
         assert reason in result.reason_codes
 
-    high_vol_verification = VerificationAgent(
-        _registry(volatility="0.11")
-    ).verify(
+    high_vol_verifier = VerificationAgent(_registry(volatility="0.11"))
+    high_vol_verification = high_vol_verifier.verify(
         analysis_id="analysis-1",
         as_of_time=T0,
         assessments=(
@@ -345,7 +346,7 @@ def test_verification_and_each_risk_gate_have_veto_authority() -> None:
         ),
         debate=_debate(),
     )
-    high_vol = AnalysisRiskEngine().evaluate(
+    high_vol = AnalysisRiskEngine(high_vol_verifier).evaluate(
         _risk_request(),
         high_vol_verification,
     )

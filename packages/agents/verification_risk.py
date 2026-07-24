@@ -3,6 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from hashlib import sha256
 from typing import Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -73,6 +74,14 @@ class VerificationAgent:
 
     def __init__(self, evidence: AnalysisEvidenceRegistry) -> None:
         self._evidence = evidence
+        self._issued: set[str] = set()
+
+    def is_issued(self, result: VerificationResult) -> bool:
+        return _result_digest(result) in self._issued
+
+    def _issue(self, result: VerificationResult) -> VerificationResult:
+        self._issued.add(_result_digest(result))
+        return result
 
     def verify(
         self,
@@ -84,10 +93,12 @@ class VerificationAgent:
     ) -> VerificationResult:
         reasons: list[str] = []
         if as_of_time.tzinfo is None:
-            return VerificationResult(
-                analysis_id=analysis_id,
-                decision=VerificationDecision.REJECTED,
-                reason_codes=("ANALYSIS_AS_OF_INVALID",),
+            return self._issue(
+                VerificationResult(
+                    analysis_id=analysis_id,
+                    decision=VerificationDecision.REJECTED,
+                    reason_codes=("ANALYSIS_AS_OF_INVALID",),
+                )
             )
         if debate.analysis_id != analysis_id or debate.as_of_time != as_of_time:
             reasons.append("DEBATE_ANALYSIS_MISMATCH")
@@ -175,29 +186,31 @@ class VerificationAgent:
                         or record.unit != claim.unit
                     ):
                         reasons.append("DEBATE_EVIDENCE_INVALID")
-        unique_evidence_ids = tuple(dict.fromkeys(evidence_ids))
+        unique_evidence_ids = tuple(sorted(set(evidence_ids)))
         if not unique_evidence_ids:
             reasons.append("EVIDENCE_MISSING")
         contradictions = len(directions) > 1
-        return VerificationResult(
-            analysis_id=analysis_id,
-            decision=(
-                VerificationDecision.REJECTED
-                if reasons
-                else VerificationDecision.VERIFIED
-            ),
-            evidence_ids=unique_evidence_ids if not reasons else (),
-            contradictions=contradictions,
-            quantitative_confidence=(
-                quantitative_confidence if not reasons else None
-            ),
-            confidence_evidence_id=(
-                confidence_evidence_id if not reasons else None
-            ),
-            technical_volatility=technical_volatility if not reasons else None,
-            volatility_evidence_id=volatility_evidence_id if not reasons else None,
-            reason_codes=tuple(dict.fromkeys(reasons)),
-            verified_at=as_of_time if as_of_time.tzinfo is not None else None,
+        return self._issue(
+            VerificationResult(
+                analysis_id=analysis_id,
+                decision=(
+                    VerificationDecision.REJECTED
+                    if reasons
+                    else VerificationDecision.VERIFIED
+                ),
+                evidence_ids=unique_evidence_ids if not reasons else (),
+                contradictions=contradictions,
+                quantitative_confidence=(
+                    quantitative_confidence if not reasons else None
+                ),
+                confidence_evidence_id=(
+                    confidence_evidence_id if not reasons else None
+                ),
+                technical_volatility=technical_volatility if not reasons else None,
+                volatility_evidence_id=volatility_evidence_id if not reasons else None,
+                reason_codes=tuple(dict.fromkeys(reasons)),
+                verified_at=as_of_time if as_of_time.tzinfo is not None else None,
+            )
         )
 
     def _claims_valid(
@@ -270,6 +283,7 @@ class AnalysisRiskResult(BaseModel):
     risk_level: str
     reason_codes: Tuple[str, ...]
     evaluated_at: datetime
+    request_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     engine_version: str = "1.0.0"
 
     @model_validator(mode="after")
@@ -290,8 +304,38 @@ class AnalysisRiskResult(BaseModel):
 
 
 class AnalysisRiskEngine:
-    def __init__(self) -> None:
+    def __init__(self, verifier: VerificationAgent) -> None:
+        if type(verifier) is not VerificationAgent:
+            raise TypeError("VERIFICATION_AUTHORITY_REQUIRED")
+        self._verifier = verifier
         self._sizing = PositionSizingCalculator()
+        self._issued: set[str] = set()
+        self._verification_bindings: dict[str, str] = {}
+
+    def is_issued(self, result: AnalysisRiskResult) -> bool:
+        return _result_digest(result) in self._issued
+
+    def uses_verifier(self, verifier: VerificationAgent) -> bool:
+        return self._verifier is verifier
+
+    def matches_verification(
+        self,
+        result: AnalysisRiskResult,
+        verification: VerificationResult,
+    ) -> bool:
+        return self._verification_bindings.get(_result_digest(result)) == _result_digest(
+            verification
+        )
+
+    def matches_request(
+        self,
+        result: AnalysisRiskResult,
+        request: AnalysisRiskRequest,
+    ) -> bool:
+        return (
+            self.is_issued(result)
+            and result.request_fingerprint == _result_digest(request)
+        )
 
     def evaluate(
         self,
@@ -299,6 +343,8 @@ class AnalysisRiskEngine:
         verification: VerificationResult,
     ) -> AnalysisRiskResult:
         reasons: list[str] = []
+        if not self._verifier.is_issued(verification):
+            reasons.append("VERIFICATION_UNTRUSTED")
         if (
             verification.analysis_id != request.analysis_id
             or verification.decision != VerificationDecision.VERIFIED
@@ -338,7 +384,7 @@ class AnalysisRiskEngine:
             if not sizing.is_valid:
                 reasons.append(sizing.rejection_reason or "SIZING_REJECTED")
         allow = not reasons and sizing is not None and sizing.is_valid
-        return AnalysisRiskResult(
+        result = AnalysisRiskResult(
             analysis_id=request.analysis_id,
             allow_trade=allow,
             approved_quantity=sizing.approved_quantity if allow and sizing else Decimal("0"),
@@ -353,4 +399,12 @@ class AnalysisRiskEngine:
             ),
             reason_codes=tuple(dict.fromkeys(reasons)),
             evaluated_at=request.as_of_time,
+            request_fingerprint=_result_digest(request),
         )
+        self._issued.add(_result_digest(result))
+        self._verification_bindings[_result_digest(result)] = _result_digest(verification)
+        return result
+
+
+def _result_digest(result: BaseModel) -> str:
+    return sha256(result.model_dump_json().encode()).hexdigest()

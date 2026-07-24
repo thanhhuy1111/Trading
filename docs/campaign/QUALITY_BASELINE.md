@@ -161,3 +161,15 @@ test doubles; no network, private API, order path or live-trading change.
 
 The one full-suite failure remains missing Alembic config. All risk calculations are
 deterministic code and inputs controlling confidence/volatility are evidence-bound.
+
+## Phase 9 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Manager + verification/risk focused tests | 7 passed |
+| `.venv/bin/pytest tests/ -q` | 573 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files (baseline) |
+
+The one failure remains the known missing Alembic config. Manager tests are offline and the
+authority chain rejects tampered or replayed upstream results.
