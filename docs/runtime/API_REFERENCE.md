@@ -38,7 +38,8 @@ availability is independent of trade intent: a valid dataset with `NO_CANDIDATE`
 a public-data result cannot create approved evidence or execution authority.
 
 Gemini requires both `GEMINI_API_KEY` and an explicit `GEMINI_MODEL` in the backend process.
-Neither value is sent to the dashboard. Local development uses the documented
+The current configured model is `gemini-3.5-flash-lite`. Neither value is sent to the
+dashboard. Local development uses the documented
 `X-Principal-Id`/`X-Roles` RBAC headers below; production still requires a real identity
 provider before deployment.
 
