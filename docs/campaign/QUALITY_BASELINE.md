@@ -124,3 +124,16 @@ Ba safety settings vẫn `False`.
 
 Full-suite failure vẫn là missing `infra/migrations/alembic.ini`. Provider tests hoàn toàn
 offline; không có Gemini call thật, secret, private exchange API hoặc live-trading change.
+
+## Phase 6 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Specialist/runtime focused tests | 13 passed |
+| `.venv/bin/pytest tests/ -q` | 560 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files |
+
+Full-suite failure vẫn là missing `infra/migrations/alembic.ini`. Specialist tests hoàn toàn
+offline; synthetic approved-runtime fixture chỉ ghi artifact dưới `tmp_path`. Không có model
+persistent, Gemini call thật, private exchange API, order path hoặc live-trading change.

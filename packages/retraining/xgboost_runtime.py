@@ -202,6 +202,8 @@ class ApprovedModelRepository:
 
 class XGBoostRuntime:
     def __init__(self, repository: ApprovedModelRepository) -> None:
+        if type(repository) is not ApprovedModelRepository:
+            raise TypeError("APPROVED_MODEL_REPOSITORY_REQUIRED")
         self._repository = repository
 
     def predict(self, request: XGBoostRuntimeRequest) -> XGBoostDirectionPrediction:

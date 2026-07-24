@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 6 — Specialist Agents
-- Last completed task: Phase 5 — Gemini Structured Provider
-- Next task: Phase 6 — Specialist Agents
+- Current phase: Phase 7 — Bull–Bear Debate
+- Last completed task: Phase 6 — Specialist Agents
+- Next task: Phase 7 — Bull–Bear Debate
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -402,6 +402,43 @@ were fixed with regressions. Final review reported no remaining CRITICAL/HIGH/ME
 
 Phase 6 — Specialist Agents: Technical, Derivatives and quantitative wrapper, using only
 precomputed values and evidence references through the Phase 5 provider contract.
+
+## Phase 6 — Specialist Agents
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Immutable append-only analysis evidence with exact category schemas, metric units/domains,
+  feature-set versions, source lineage and point-in-time validation.
+- Technical Agent consumes a complete technical snapshot plus coherent quantitative
+  prediction evidence; Derivatives Agent consumes complete raw and derived derivatives data.
+- Both LLM agents use versioned prompts, reject digits outside typed numeric claims, and
+  validate every claim against the exact evidence ID/name/value/unit.
+- Provider failures, invalid schemas, missing/stale/future/mixed/duplicate evidence return
+  `UNAVAILABLE` with no fabricated analysis fields.
+- Quantitative Agent is a deterministic wrapper over the exact Phase 4E approved runtime and
+  emits its own probability/confidence evidence. The runtime now also rejects arbitrary
+  repository implementations.
+
+### Independent safety review
+
+Read-only review identified free-text numeric bypasses, incomplete/arbitrary schemas,
+approval-authority bypass, duplicate/mixed evidence, unit ambiguity, provider exception
+leakage and an overly strict downstream probability sum. All CRITICAL/HIGH/MEDIUM findings
+were fixed with regression coverage. Final review reported none remaining.
+
+### Verification
+
+- Specialist/runtime focused tests: 13 passed.
+- Full pytest: 560 passed, 12 skipped, 1 known Alembic failure.
+- Ruff clean; mypy remains the 180-error/67-file baseline.
+- `git diff --check` clean; safety settings remain `False/False/False`.
+
+### Next task
+
+Phase 7 — bounded, evidence-only Bull–Bear Debate with persistent transcript and safe partial
+failure handling.
 
 ### Commit and push
 
