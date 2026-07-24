@@ -1,16 +1,20 @@
 import json
 import math
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from packages.common.config import settings
 from packages.features.models import FeatureComputationRequest
 from packages.features.pipeline import feature_pipeline
 from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
+from packages.market_data.adapters.binance_futures import BinancePublicFuturesDataProvider
+from packages.market_data.derivatives_models import DerivativesSnapshot
 from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
 from packages.market_data.models import Candle, Timeframe
 from packages.market_data.symbol_registry import symbol_registry
@@ -19,6 +23,8 @@ from packages.retraining.price_projection import artifact_path
 router = APIRouter(prefix="/market-data", tags=["Market Data Platform"])
 
 _binance_provider = BinancePublicMarketDataProvider()
+_futures_provider = BinancePublicFuturesDataProvider()
+_derivatives_cache: Dict[str, Tuple[float, DerivativesSnapshot]] = {}
 
 ingestion_jobs_mock: List[Dict[str, Any]] = []
 
@@ -69,6 +75,55 @@ async def get_live_prices(symbols: str = Query("BTC/USDT,ETH/USDT")) -> Dict[str
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "prices": {sym: str(price) for sym, price in prices.items()},
     }
+
+
+def _decimal_or_none(value: Optional[Decimal]) -> Optional[str]:
+    return str(value) if value is not None else None
+
+
+def _derivatives_snapshot_to_dict(s: DerivativesSnapshot) -> Dict[str, Any]:
+    return {
+        "exchange": s.exchange,
+        "symbol": s.symbol,
+        "exchange_timestamp": s.exchange_timestamp.isoformat(),
+        "data_quality_status": s.data_quality_status.value,
+        "mark_price": _decimal_or_none(s.mark_price),
+        "index_price": _decimal_or_none(s.index_price),
+        "funding_rate": _decimal_or_none(s.funding_rate),
+        "next_funding_time": s.next_funding_time.isoformat() if s.next_funding_time else None,
+        "open_interest": _decimal_or_none(s.open_interest),
+        "open_interest_change_pct": _decimal_or_none(s.open_interest_change_pct),
+        "long_short_account_ratio": _decimal_or_none(s.long_short_account_ratio),
+        "taker_buy_sell_ratio": _decimal_or_none(s.taker_buy_sell_ratio),
+        "futures_basis_bps": _decimal_or_none(s.futures_basis_bps),
+        "reason_codes": s.reason_codes,
+    }
+
+
+@router.get("/derivatives/{symbol:path}")
+async def get_derivatives_snapshot(symbol: str) -> Dict[str, Any]:
+    """Real futures/derivatives snapshot -- mark/index price, funding rate, open interest,
+    long/short account ratio, taker buy/sell ratio, and a computed futures basis -- from
+    Binance USDM Futures public REST endpoints. Public data only, no API key. Cached briefly
+    (`settings.DERIVATIVES_CACHE_TTL_SECONDS`) to respect Binance's per-endpoint rate limits.
+    A sub-fetch failure never fabricates a number: the affected field stays `null` and
+    `data_quality_status`/`reason_codes` report exactly what failed
+    (see packages.market_data.derivatives_quality)."""
+    now = time.monotonic()
+    cached = _derivatives_cache.get(symbol)
+    if cached is not None and now - cached[0] < settings.DERIVATIVES_CACHE_TTL_SECONDS:
+        return _derivatives_snapshot_to_dict(cached[1])
+
+    spot_reference_price: Optional[Decimal] = None
+    try:
+        prices = await _binance_provider.fetch_current_prices([symbol])
+        spot_reference_price = prices.get(symbol)
+    except Exception:  # noqa: BLE001 - basis just stays null; the snapshot is still returned
+        spot_reference_price = None
+
+    snapshot = await _futures_provider.fetch_snapshot(symbol, spot_reference_price=spot_reference_price)
+    _derivatives_cache[symbol] = (now, snapshot)
+    return _derivatives_snapshot_to_dict(snapshot)
 
 
 def _candle_to_dict(c: Candle) -> Dict[str, Any]:

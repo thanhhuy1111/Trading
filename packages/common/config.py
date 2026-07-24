@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     BINANCE_SECRET_KEY: str = ""
     BINANCE_TESTNET: bool = True
     EXCHANGE_NAME: str = "binance_spot"
+    FUTURES_EXCHANGE_NAME: str = "binance_usdm_futures"
+    DERIVATIVES_CACHE_TTL_SECONDS: int = 30
 
     # Trading Risk Parameters
     DEFAULT_SYMBOLS: str = "BTCUSDT,ETHUSDT"
