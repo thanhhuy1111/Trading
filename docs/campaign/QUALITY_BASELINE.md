@@ -1,0 +1,64 @@
+# Campaign Quality Baseline
+
+## Baseline được bàn giao
+
+Nguồn: `CODEX_EXECUTION_PLAYBOOK.md` và `docs/MULTI_AGENT_ADVISOR_PROGRESS.md`.
+
+| Check | Baseline gần nhất | Quy tắc |
+|---|---:|---|
+| `pytest tests/ -q` | 487 passed, 3 failed | Không tăng lỗi; ba lỗi cũ phải được nhận diện riêng |
+| `ruff check .` | clean | Phải giữ clean |
+| `mypy packages/ apps/` | 180 errors | Không được tăng số lỗi |
+
+Ba lỗi pytest cũ được ghi nhận:
+
+- hai integration tests bị Binance geo-restriction;
+- một integration test Alembic thiếu config;
+- không được sửa ngoài scope chỉ để thay đổi baseline.
+
+## Trạng thái môi trường quan sát ở đầu Phase 4A
+
+- Repo không có `.venv/` tại root.
+- `python3` và `pytest` trên `PATH` dùng Python 3.10, trong khi `pyproject.toml` yêu cầu
+  Python `>=3.12`.
+- `ruff` có trên `PATH`.
+- executable/module `mypy` không có trên `PATH` tại thời điểm khảo sát.
+- `scikit-learn`, `joblib`, `numpy`, `pandas` import được từ Python trên `PATH`.
+- `xgboost` chưa import được và chưa được khai báo trong `pyproject.toml`.
+
+Các quan sát trên là trạng thái môi trường, không thay thế baseline bàn giao. Mọi task phải
+ghi đúng command thực tế đã chạy và không được claim `.venv`/mypy/full-suite pass nếu công cụ
+không tồn tại.
+
+Để verify Phase 4A trên Python version được project hỗ trợ, một `.venv` Python 3.12.12 cục bộ
+đã được tạo từ `.[dev,research]`. Thư mục này đã bị gitignore và không phải thay đổi source.
+
+## Phase 4A verification hiện tại
+
+| Check thực tế | Kết quả |
+|---|---|
+| Targeted tests liên quan retraining/features/registry/lookahead | 40 passed |
+| `.venv/bin/pytest tests/ -q` | 489 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files |
+
+Full-suite failure còn lại là
+`tests/integration/test_db_migration.py::test_alembic_migration_lifecycle`, do thiếu
+`infra/migrations/alembic.ini`; đây là lỗi Alembic đã có trong baseline. Hai network tests
+Binance được skip trong environment này thay vì fail. Không có source file nào thay đổi trong
+Phase 4A, nên mypy giữ đúng baseline 180.
+
+## Safety baseline
+
+`packages/common/config.py` khai báo:
+
+```python
+LIVE_TRADING_ENABLED: bool = False
+PRIVATE_EXCHANGE_API_ENABLED: bool = False
+FEATURE_FLAGS_LIVE_TRADING: bool = False
+```
+
+Mỗi task phải review diff để xác nhận không thay đổi các mặc định này, không thêm private
+exchange API và không thêm real-order path.
+
+Runtime settings được đọc trong Phase 4A cũng trả cả ba giá trị là `False`.
