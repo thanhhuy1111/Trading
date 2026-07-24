@@ -105,3 +105,41 @@ def test_insufficient_data_is_reported_honestly_not_silently_skipped():
     for r in result.horizons.values():
         assert not r.approved
         assert r.reason == "INSUFFICIENT_DATA"
+
+
+def test_forming_candle_cannot_change_training_rows_or_result() -> None:
+    candles = _smooth_trending_candles(80)
+    cutoff = candles[-1].close_time + timedelta(seconds=1)
+    forming = _candle(
+        candles[-1].open_time + timedelta(hours=1),
+        Decimal("999999"),
+    ).model_copy(update={"is_closed": False})
+
+    base_rows = build_rows(
+        candles,
+        SYMBOL,
+        Timeframe.H1,
+        as_of_time=cutoff,
+    )
+    appended_rows = build_rows(
+        [*candles, forming],
+        SYMBOL,
+        Timeframe.H1,
+        as_of_time=cutoff,
+    )
+    base_result = train(
+        candles,
+        SYMBOL,
+        Timeframe.H1,
+        as_of_time=cutoff,
+    )
+    appended_result = train(
+        [*candles, forming],
+        SYMBOL,
+        Timeframe.H1,
+        as_of_time=cutoff,
+    )
+
+    assert appended_rows == base_rows
+    assert appended_result.dataset_checksum == base_result.dataset_checksum
+    assert appended_result.horizons == base_result.horizons

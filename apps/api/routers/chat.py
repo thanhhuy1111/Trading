@@ -60,6 +60,16 @@ class ChatResponse(BaseModel):
     generated_at: datetime
 
 
+@router.get("/chat/health")
+async def chat_health() -> dict[str, object]:
+    return {
+        "status": "CONFIGURED" if gemini_settings.is_configured else "NOT_CONFIGURED",
+        "provider": "google_gemini",
+        "model": gemini_settings.GEMINI_MODEL or None,
+        "reason_codes": [] if gemini_settings.is_configured else ["GEMINI_NOT_CONFIGURED"],
+    }
+
+
 @router.post(
     "/chat",
     response_model=ChatResponse,

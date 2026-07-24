@@ -24,7 +24,7 @@ import json
 import math
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import uuid4
@@ -42,6 +42,7 @@ MIN_RELATIVE_MAPE_IMPROVEMENT = 0.05  # OOS MAPE must be >= 5% relatively better
 MIN_DIRECTIONAL_ACCURACY = 0.55  # a small but real edge over the 50% coin-flip floor
 NUM_FOLDS = 3
 MIN_LOOKBACK_BARS = 25  # ema_20_slope needs ~20 bars of real history to be non-None
+CANDLE_PUBLICATION_LAG = timedelta(milliseconds=1)
 
 ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "data" / "research" / "price_models"
 
@@ -100,20 +101,45 @@ def _git_sha() -> str:
         return "UNKNOWN"
 
 
-def build_rows(candles: Sequence[Candle], symbol: str, timeframe: Timeframe) -> List[Row]:
+def closed_published_candles(
+    candles: Sequence[Candle],
+    *,
+    as_of_time: datetime,
+) -> List[Candle]:
+    """Return only candles whose final values were available by ``as_of_time``."""
+    return sorted(
+        (
+            candle
+            for candle in candles
+            if candle.is_closed
+            and candle.close_time + CANDLE_PUBLICATION_LAG <= as_of_time
+        ),
+        key=lambda candle: candle.open_time,
+    )
+
+
+def build_rows(
+    candles: Sequence[Candle],
+    symbol: str,
+    timeframe: Timeframe,
+    *,
+    as_of_time: datetime | None = None,
+) -> List[Row]:
     """Point-in-time features (packages.features.pipeline.feature_pipeline.compute, the
     same pipeline every other agent/service in this repo uses) + real forward log-returns.
     A row missing any feature, or without enough forward history for a given horizon, never
     gets a guessed/imputed value -- it's skipped for that horizon (or entirely, if no
     feature is available at all)."""
-    sorted_candles = sorted(candles, key=lambda c: c.open_time)
+    cutoff = as_of_time or datetime.now(timezone.utc)
+    sorted_candles = closed_published_candles(candles, as_of_time=cutoff)
     rows: List[Row] = []
     for i in range(MIN_LOOKBACK_BARS, len(sorted_candles)):
         current = sorted_candles[i]
         history = sorted_candles[: i + 1]
         request = FeatureComputationRequest(
             exchange="binance", symbol=symbol, timeframe=timeframe,
-            feature_set="standard_v1", as_of_time=current.close_time,
+            feature_set="standard_v1",
+            as_of_time=current.close_time + CANDLE_PUBLICATION_LAG,
         )
         snapshot = feature_pipeline.compute(request, history)
         raw = [snapshot.values.get(name) for name in FEATURE_NAMES]
@@ -291,16 +317,46 @@ def evaluate_horizon(rows: List[Row], horizon: int, folds: List[WalkForwardFold]
     )
 
 
-def train(candles: Sequence[Candle], symbol: str, timeframe: Timeframe) -> TrainingResult:
-    rows = build_rows(candles, symbol, timeframe)
-    sorted_candles = sorted(candles, key=lambda c: c.open_time)
+def train(
+    candles: Sequence[Candle],
+    symbol: str,
+    timeframe: Timeframe,
+    *,
+    as_of_time: datetime | None = None,
+) -> TrainingResult:
+    cutoff = as_of_time or datetime.now(timezone.utc)
+    sorted_candles = closed_published_candles(candles, as_of_time=cutoff)
+    if len(sorted_candles) < 2:
+        return TrainingResult(
+            symbol=symbol,
+            timeframe=timeframe.value,
+            trained_at=cutoff,
+            dataset_checksum=_checksum_candles(sorted_candles),
+            code_commit=_git_sha(),
+            horizons={
+                horizon: HorizonResult(
+                    horizon=horizon,
+                    approved=False,
+                    reason="INSUFFICIENT_DATA",
+                )
+                for horizon in HORIZONS
+            },
+        )
+    rows = build_rows(
+        sorted_candles,
+        symbol,
+        timeframe,
+        as_of_time=cutoff,
+    )
     folds = walk_forward_runner.generate_folds(
         session_id=uuid4(), start_time=sorted_candles[0].open_time, end_time=sorted_candles[-1].close_time,
         num_folds=NUM_FOLDS, purge_hours=1, embargo_hours=1,
     )
     horizons = {h: evaluate_horizon(rows, h, folds) for h in HORIZONS}
     return TrainingResult(
-        symbol=symbol, timeframe=timeframe.value, trained_at=datetime.now(timezone.utc),
+        symbol=symbol,
+        timeframe=timeframe.value,
+        trained_at=cutoff,
         dataset_checksum=_checksum_candles(sorted_candles), code_commit=_git_sha(), horizons=horizons,
     )
 
@@ -339,9 +395,18 @@ async def run_training_cli(symbol: str, timeframe: Timeframe, lookback_bars: int
     end_time = datetime.now(timezone.utc)
     start_time = end_time - TIMEFRAME_INTERVAL[timeframe] * lookback_bars
     candles = await provider.fetch_candles(symbol, timeframe, start_time, end_time, limit=lookback_bars)
-    result = train(candles, symbol, timeframe)
+    eligible_candles = closed_published_candles(candles, as_of_time=end_time)
+    result = train(
+        eligible_candles,
+        symbol,
+        timeframe,
+        as_of_time=end_time,
+    )
     path = write_artifact(result)
-    print(f"[price_projection] trained {symbol} {timeframe.value} on {len(candles)} real candles")
+    print(
+        f"[price_projection] trained {symbol} {timeframe.value} "
+        f"on {len(eligible_candles)} closed public candles"
+    )
     for h in HORIZONS:
         r = result.horizons[h]
         print(

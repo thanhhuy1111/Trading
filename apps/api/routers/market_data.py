@@ -1,7 +1,7 @@
 import json
 import math
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from uuid import UUID, uuid4
@@ -200,20 +200,39 @@ async def get_trend_projection(
     candles = await _fetch_real_candles(symbol, timeframe, limit=100)
     if not candles:
         return {
-            "available": False, "reason": "NO_MARKET_DATA_AVAILABLE", "model_status": "NO_TRAINED_MODEL", "points": [],
+            "available": False,
+            "reason": "NO_MARKET_DATA_AVAILABLE",
+            "model_status": "NO_TRAINED_MODEL",
+            "points": [],
+        }
+    closed_candles = sorted(
+        (
+            candle
+            for candle in candles
+            if candle.is_closed
+            and candle.close_time + timedelta(milliseconds=1) <= now
+        ),
+        key=lambda candle: candle.open_time,
+    )
+    if not closed_candles:
+        return {
+            "available": False,
+            "reason": "NO_CLOSED_MARKET_DATA_AVAILABLE",
+            "model_status": "NO_TRAINED_MODEL",
+            "points": [],
         }
 
     artifact = _load_price_model_artifact(symbol, timeframe)
     if artifact is None:
         return {"available": False, "reason": "NO_TRAINED_MODEL", "model_status": "NO_TRAINED_MODEL", "points": []}
 
-    sorted_candles = sorted(candles, key=lambda c: c.open_time)
-    last_candle = sorted_candles[-1]
+    last_candle = closed_candles[-1]
     request = FeatureComputationRequest(
         exchange="binance", symbol=symbol, timeframe=timeframe,
-        feature_set="standard_v1", as_of_time=last_candle.close_time,
+        feature_set="standard_v1",
+        as_of_time=last_candle.close_time + timedelta(milliseconds=1),
     )
-    snapshot = feature_pipeline.compute(request, list(sorted_candles))
+    snapshot = feature_pipeline.compute(request, closed_candles)
     feature_names: List[str] = artifact["feature_names"]
     raw_features = [snapshot.values.get(name) for name in feature_names]
     if any(v is None for v in raw_features):

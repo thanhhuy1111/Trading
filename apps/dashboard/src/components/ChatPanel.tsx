@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation, type Lang } from '../i18n';
 
 interface ChatMessage {
@@ -18,7 +18,24 @@ export default function ChatPanel({ lang }: { lang: Lang }) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [configured, setConfigured] = useState(true);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkHealth = async () => {
+      try {
+        const response = await fetch('/api/v1/chat/health');
+        const body = response.ok ? await response.json() : null;
+        if (!cancelled) setConfigured(body?.status === 'CONFIGURED');
+      } catch {
+        if (!cancelled) setConfigured(false);
+      }
+    };
+    checkHealth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const send = async () => {
     const message = input.trim();
@@ -62,7 +79,7 @@ export default function ChatPanel({ lang }: { lang: Lang }) {
         </div>
       </div>
 
-      {!configured && (
+      {configured === false && (
         <div className="mx-4 mt-3 p-3 rounded-lg border border-amber-800/60 bg-amber-950/30 text-amber-300 text-xs">
           {t('advisorNotConfigured')}
         </div>
@@ -103,12 +120,12 @@ export default function ChatPanel({ lang }: { lang: Lang }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
             placeholder={t('advisorPlaceholder')}
-            disabled={loading || !configured}
+            disabled={loading || configured !== true}
             className="flex-1 bg-black/30 border border-white/[0.08] rounded-lg px-3 py-2 text-[13px] text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500/60 disabled:opacity-50"
           />
           <button
             onClick={send}
-            disabled={loading || !input.trim() || !configured}
+            disabled={loading || !input.trim() || configured !== true}
             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[13px] font-medium rounded-lg transition"
           >
             {t('advisorSend')}

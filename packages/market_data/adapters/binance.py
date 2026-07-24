@@ -3,7 +3,7 @@ import json
 import ssl
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import AsyncIterator, Dict, List, Sequence
 
@@ -23,11 +23,9 @@ from packages.market_data.models import (
 from packages.market_data.symbol_registry import symbol_registry
 
 
-def _get_ssl_context():
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+def _get_ssl_context() -> ssl.SSLContext:
+    """Return a certificate-verifying TLS context for public market-data requests."""
+    return ssl.create_default_context()
 
 
 class BinancePublicMarketDataProvider:
@@ -96,6 +94,8 @@ class BinancePublicMarketDataProvider:
             )
             raw_klines = json.loads(resp_data.decode("utf-8"))
 
+            received_at = datetime.now(timezone.utc)
+            publication_cutoff = min(end_time, received_at)
             candles: List[Candle] = []
             for item in raw_klines:
                 open_ts = datetime.fromtimestamp(item[0] / 1000.0, tz=timezone.utc)
@@ -115,7 +115,7 @@ class BinancePublicMarketDataProvider:
                         quote_volume=Decimal(str(item[7])),
                         trades_count=int(item[8]),
                         exchange_timestamp=close_ts,
-                        is_closed=True,
+                        is_closed=close_ts + timedelta(milliseconds=1) <= publication_cutoff,
                         data_quality_status=DataQualityStatus.HEALTHY
                     )
                 )

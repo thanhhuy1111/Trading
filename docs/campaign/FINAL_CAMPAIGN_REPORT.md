@@ -120,7 +120,8 @@ SQLite types while preserving PostgreSQL UUID/JSONB variants.
 Known non-failing debt:
 
 - 12 PostgreSQL durability tests skipped without `PAPER_DB_TEST_URL`;
-- 202 strict-mypy errors in 71 files;
+- 183 strict-mypy errors in 69 files at the post-campaign runtime checkpoint (improved from
+  the 202-error campaign-final baseline);
 - Starlette/httpx and python-json-logger deprecation warnings;
 - dashboard bundle chunk-size warning.
 
@@ -155,7 +156,7 @@ collection remain future work; citations were not invented.
 
 ## 15. Remaining backlog
 
-1. Reduce the 202-error strict-mypy backlog without weakening checks.
+1. Reduce the 183-error strict-mypy backlog without weakening checks.
 2. Run disposable-PostgreSQL paper durability drills with `PAPER_DB_TEST_URL`.
 3. Code-split the dashboard's largest production chunk.
 4. Implement and independently review the thesis collection adapter.
@@ -164,3 +165,21 @@ collection remain future work; citations were not invented.
 6. Configure advanced sources only after license, provenance and quality review.
 7. Train and independently approve asset-specific models; never fall back from ETH to BTC.
 8. Complete verified academic citation review.
+
+## 16. Post-campaign public research runtime checkpoint
+
+The dashboard analysis action now performs a real deterministic research computation using
+closed public Binance spot candles for registered BTC/USDT and ETH/USDT scopes. It emits
+point-in-time features, regime/routed rule-agent output and 13 source-bound technical evidence
+records. A completed computation may return `NO_DECISION`; this is not converted into a trade.
+
+Quantitative model execution and LLM specialists are not bound to this surface, their approval
+state is not inferred, debate/specialist Verification are not run, and Risk always denies
+execution authority with zero exposure. Gemini chat remains disabled until both local
+configuration values are present.
+
+Current checkpoint verification is 635 Python tests passed with 12 explicit PostgreSQL skips,
+8 dashboard tests passed, Ruff clean, lockfile valid, production build passed and dependency
+audit at 0 vulnerabilities. Real browser checks completed for BTC/USDT 4h and ETH/USDT 1h;
+both returned `AVAILABLE`, `NO_DECISION` and 13 observed evidence records. These observations
+are functional evidence only and make no claim of alpha, model approval or trading readiness.

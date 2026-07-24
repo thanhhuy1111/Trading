@@ -271,3 +271,24 @@ helpers, contract tests and a dependency lock. Every uncollected comparative res
 The former missing-Alembic-config failure is resolved. Remaining skips require an explicit
 disposable PostgreSQL DSN; they are not counted as passes. Safety flags remain false and all
 uncollected thesis results remain `PENDING_EVIDENCE`.
+
+## Post-campaign public research runtime activation
+
+| Check thực tế | Kết quả |
+|---|---|
+| Focused runtime/API/chat/adapter/projection tests | 31 passed |
+| `.venv/bin/pytest tests/ -q` | 635 passed, 12 skipped, 0 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 183 errors in 69 files |
+| `uv lock --check` | passed |
+| Dashboard Vitest | 8 passed |
+| Dashboard production build | passed, one chunk-size warning |
+| Dashboard online audit, then final `npm audit --offline --audit-level=high` | 0 vulnerabilities |
+| Browser BTC/USDT 4h | `AVAILABLE`, `NO_DECISION`, 13 evidence records |
+| Browser ETH/USDT 1h | `AVAILABLE`, `NO_DECISION`, 13 evidence records |
+
+Mypy remains campaign-wide debt but improved from the 202-error final baseline; no error is
+reported in the new research runtime or campaign router. Browser observations are functional
+acceptance evidence only, not alpha, probability, confidence or model-approval evidence.
+Live/private flags remain false, public TLS verification remains enabled, and Risk continues
+to return zero execution authority.

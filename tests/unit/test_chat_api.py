@@ -149,3 +149,13 @@ def test_chat_endpoint_returns_503_when_gemini_not_configured() -> None:
         assert response.status_code == 503
     finally:
         app.dependency_overrides.clear()
+
+
+def test_chat_health_never_exposes_secret() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] in {"CONFIGURED", "NOT_CONFIGURED"}
+    assert body["provider"] == "google_gemini"
+    assert "GEMINI_API_KEY" not in response.text

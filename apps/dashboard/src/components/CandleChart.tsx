@@ -10,6 +10,7 @@ interface RawCandle {
   low_price: string;
   close_price: string;
   volume: string;
+  is_closed: boolean;
 }
 
 interface TrendProjectionPoint {
@@ -46,7 +47,7 @@ interface ChartRow {
   oosDirAcc?: number;
 }
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT'];
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 function CandlestickShape(props: any) {
@@ -106,10 +107,24 @@ function ChartTooltip({ active, payload, t }: any) {
   return null;
 }
 
-export default function CandleChart({ lang }: { lang: Lang }) {
+interface CandleChartProps {
+  lang: Lang;
+  symbol: string;
+  timeframe: string;
+  onSymbolChange: (symbol: string) => void;
+  onTimeframeChange: (timeframe: string) => void;
+  disabled?: boolean;
+}
+
+export default function CandleChart({
+  lang,
+  symbol,
+  timeframe,
+  onSymbolChange,
+  onTimeframeChange,
+  disabled = false,
+}: CandleChartProps) {
   const t = useTranslation(lang);
-  const [symbol, setSymbol] = useState('BTCUSDT');
-  const [timeframe, setTimeframe] = useState('1h');
   const [rows, setRows] = useState<ChartRow[]>([]);
   const [projection, setProjection] = useState<TrendProjectionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +132,10 @@ export default function CandleChart({ lang }: { lang: Lang }) {
 
   useEffect(() => {
     let cancelled = false;
+    setRows([]);
+    setProjection(null);
+    setError(null);
+    setLoading(true);
 
     const load = async () => {
       try {
@@ -133,7 +152,7 @@ export default function CandleChart({ lang }: { lang: Lang }) {
           ? await projectionRes.json()
           : { available: false, points: [] };
 
-        const candleRows: ChartRow[] = rawCandles.map((c) => {
+        const candleRows: ChartRow[] = rawCandles.filter((c) => c.is_closed).map((c) => {
           const time = new Date(c.close_time).getTime();
           const open = parseFloat(c.open_price);
           const high = parseFloat(c.high_price);
@@ -172,7 +191,6 @@ export default function CandleChart({ lang }: { lang: Lang }) {
       }
     };
 
-    setLoading(true);
     load();
     const interval = setInterval(load, 15000);
     return () => {
@@ -187,11 +205,14 @@ export default function CandleChart({ lang }: { lang: Lang }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-        <div className="flex items-baseline gap-3">
+      <div
+        data-testid="chart-toolbar"
+        className="flex flex-col gap-3 px-5 py-4 border-b border-white/[0.06] sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="min-w-0 flex flex-wrap items-baseline gap-3">
           <h2 className="text-base font-semibold text-slate-100">{symbol}</h2>
           {lastClose !== undefined && (
-            <span className="text-2xl font-semibold tabular-nums text-slate-50">
+            <span className="text-xl sm:text-2xl font-semibold tabular-nums text-slate-50">
               {lastClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           )}
@@ -201,20 +222,25 @@ export default function CandleChart({ lang }: { lang: Lang }) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
           <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/60"
+            onChange={(e) => onSymbolChange(e.target.value)}
+            disabled={disabled}
+            className="w-full sm:w-auto bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/60"
           >
             {SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <div className="flex items-center gap-0.5 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5">
+          <div
+            data-testid="timeframe-strip"
+            className="flex w-full sm:w-auto items-center gap-0.5 overflow-x-auto bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5"
+          >
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+                onClick={() => onTimeframeChange(tf)}
+                disabled={disabled}
+                className={`shrink-0 px-2.5 py-1 text-xs font-medium rounded-md transition ${
                   timeframe === tf ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >

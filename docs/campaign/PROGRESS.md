@@ -732,6 +732,50 @@ the identity, contrast, temporal and durability fixes. Reviewer did not edit fil
 
 Campaign-level final acceptance and `docs/campaign/FINAL_CAMPAIGN_REPORT.md`.
 
+## Post-campaign activation — Public deterministic research analysis
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Replaced the Phase 10 safe-unavailable analysis stub with a real research-only runtime over
+  closed Binance public candles for BTC/USDT and ETH/USDT.
+- Reused the point-in-time feature pipeline, regime classifier, strategy router, deterministic
+  rule agent, critic, consensus and allocator; completed computations may honestly return
+  `NO_DECISION`.
+- Bound 13 technical evidence records to public source, feature snapshot, observed time and
+  availability time. All agent timestamps are at or after source availability.
+- Kept quantitative/LLM specialist runtimes explicitly unavailable, skipped specialist
+  Verification, and denied execution authority with zero quantity/notional.
+- Added request-scope fingerprints and in-flight deduplication, stale UI response cancellation,
+  closed-candle chart filtering, separate chat health and verified public TLS.
+- Enforced closed-and-published candle boundaries in the existing price-projection training and
+  serving paths; a forming candle cannot alter rows, approval results or served projections.
+- Isolated cancellation of duplicate request followers and made the chart toolbar responsive
+  at narrow mobile widths.
+
+### Independent safety review
+
+The first read-only review found one HIGH temporal-lineage issue and four MEDIUM issues covering
+idempotency, UI scope attribution, heuristic-return labeling and unverified approval state.
+All were fixed and regression-tested. A second review found forming-candle contamination in
+the legacy projection path, shared-future cancellation poisoning and mobile toolbar overflow;
+those were also fixed. No private endpoint, live authority, LLM fallback or approval-gate
+bypass was found.
+
+### Verification
+
+- Focused Python tests: 31 passed.
+- Full suite: 635 passed, 12 skipped, 0 failed.
+- Dashboard: 8 tests passed; production build passed; online audit found 0 vulnerabilities
+  before the registry later returned 503, and the final offline audit also found 0.
+- Ruff and dependency-lock checks passed.
+- Full mypy: 183 existing errors in 69 files, below the 202-error campaign-final baseline and
+  with no new runtime/router error.
+- Real browser: BTC/USDT 4h and ETH/USDT 1h each completed as `AVAILABLE` with 13 evidence
+  records; both current observations legitimately returned `NO_DECISION`.
+- Live/private flags remain false; no secret, private exchange call or order path was added.
+
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CandleChart from './components/CandleChart';
 import ChatPanel from './components/ChatPanel';
 import { analysisState, itemCount } from './analysisView';
@@ -19,23 +19,64 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [systemHealth, setSystemHealth] = useState<Record<string, unknown> | null>(null);
   const [predictions, setPredictions] = useState<Record<string, unknown> | null>(null);
+  const [symbol, setSymbol] = useState('BTCUSDT');
+  const [timeframe, setTimeframe] = useState('4h');
+  const activeAnalysisRequest = useRef(0);
+  const analysisAbortController = useRef<AbortController | null>(null);
+  const clearAnalysisForScopeChange = () => {
+    activeAnalysisRequest.current += 1;
+    analysisAbortController.current?.abort();
+    analysisAbortController.current = null;
+    setIsRunning(false);
+    setAnalysis(null);
+    setAnalysisError('');
+  };
+  const changeSymbol = (nextSymbol: string) => {
+    clearAnalysisForScopeChange();
+    setSymbol(nextSymbol);
+  };
+  const changeTimeframe = (nextTimeframe: string) => {
+    clearAnalysisForScopeChange();
+    setTimeframe(nextTimeframe);
+  };
 
   const runAnalysis = async () => {
+    analysisAbortController.current?.abort();
+    const controller = new AbortController();
+    analysisAbortController.current = controller;
+    const requestVersion = activeAnalysisRequest.current + 1;
+    activeAnalysisRequest.current = requestVersion;
+    const requestedSymbol = symbol === 'BTCUSDT' ? 'BTC/USDT' : 'ETH/USDT';
+    const requestedTimeframe = timeframe;
     setIsRunning(true);
     setAnalysisError('');
     try {
       const response = await fetch('/api/v1/analysis/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: 'BTC/USDT', timeframe: '4h' }),
+        signal: controller.signal,
+        body: JSON.stringify({
+          symbol: requestedSymbol,
+          timeframe: requestedTimeframe,
+        }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.message || 'Analysis request failed');
-      setAnalysis(body);
+      if (activeAnalysisRequest.current === requestVersion) {
+        setAnalysis(body);
+      }
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : 'Analysis request failed');
+      if (
+        activeAnalysisRequest.current === requestVersion
+        && !(error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        setAnalysisError(error instanceof Error ? error.message : 'Analysis request failed');
+      }
     } finally {
-      setIsRunning(false);
+      if (activeAnalysisRequest.current === requestVersion) {
+        analysisAbortController.current = null;
+        setIsRunning(false);
+      }
     }
   };
 
@@ -64,7 +105,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="min-h-screen xl:h-screen flex flex-col bg-slate-950 text-slate-100 xl:overflow-hidden">
       <header className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06] shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[11px] font-bold text-white">
@@ -90,12 +131,14 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] min-h-0 overflow-auto xl:overflow-hidden">
-        <div className="min-w-0 min-h-0 flex flex-col">
+      <main className="flex-1 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] xl:min-h-0 xl:overflow-hidden">
+        <div className="min-w-0 flex flex-col xl:min-h-0">
           <section className="px-5 py-4 border-b border-white/[0.06]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-400">BTC/USDT · 4h</p>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-400">
+                  {symbol === 'BTCUSDT' ? 'BTC/USDT' : 'ETH/USDT'} · {timeframe}
+                </p>
                 <h1 className="text-xl font-semibold mt-1">Evidence-first analysis</h1>
               </div>
               <button
@@ -124,6 +167,12 @@ export default function App() {
                   <p className="text-[10px] uppercase text-slate-500">state</p>
                   <p className="mt-1 text-sm text-slate-200">{analysisState(analysis)}</p>
                 </div>
+                {analysis.as_of_time != null && (
+                  <div className="col-span-2 lg:col-span-3 text-[11px] text-slate-500">
+                    Analysis context: {String(analysis.symbol)} · {String(analysis.timeframe)}
+                    {' · '}Point-in-time snapshot: {new Date(String(analysis.as_of_time)).toLocaleString()}
+                  </div>
+                )}
               </div>
             )}
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -135,6 +184,11 @@ export default function App() {
                       <li key={String(agent.agent_name)} className="rounded bg-black/20 p-2">
                         <span className="text-slate-200">{String(agent.agent_name)}</span>
                         {' · '}{String(agent.status)}
+                        {agent.regime ? <div>regime: {String(agent.regime)}</div> : null}
+                        {agent.action ? <div>action: {String(agent.action)}</div> : null}
+                        {agent.heuristic_score ? (
+                          <div>heuristic score: {String(agent.heuristic_score)}</div>
+                        ) : null}
                         <div>{Array.isArray(agent.reason_codes) ? agent.reason_codes.join(', ') : ''}</div>
                       </li>
                     ))}
@@ -147,7 +201,7 @@ export default function App() {
                   {analysis ? `${itemCount(analysis.evidence)} evidence records` : 'No evidence'}
                 </p>
                 {analysis && itemCount(analysis.evidence) > 0 && (
-                  <pre className="mt-2 overflow-auto text-[10px]">{JSON.stringify(analysis.evidence, null, 2)}</pre>
+                  <pre className="mt-2 max-h-64 overflow-auto text-[10px]">{JSON.stringify(analysis.evidence, null, 2)}</pre>
                 )}
               </section>
               <section aria-label="Verification and Risk" className="rounded-lg border border-white/[0.07] bg-white/[0.02] p-3">
@@ -177,10 +231,16 @@ export default function App() {
             </div>
           </section>
           <div className="flex-1 min-h-[420px]">
-            <CandleChart lang={lang} />
+            <CandleChart
+              lang={lang}
+              symbol={symbol}
+              timeframe={timeframe}
+              onSymbolChange={changeSymbol}
+              onTimeframeChange={changeTimeframe}
+            />
           </div>
         </div>
-        <div className="shrink-0 border-t xl:border-t-0 xl:border-l border-white/[0.06] min-h-[320px]">
+        <div className="shrink-0 border-t xl:border-t-0 xl:border-l border-white/[0.06] min-h-[420px] xl:min-h-0">
           <ChatPanel lang={lang} />
         </div>
       </main>

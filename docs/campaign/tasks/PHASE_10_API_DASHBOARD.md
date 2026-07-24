@@ -7,25 +7,48 @@
 ## Delivered
 
 - Exact `/api/v1` market, analysis, prediction and system-health route set.
-- Safe analysis trigger persists an honest rejected pipeline snapshot when runtime/model/data
-  are not configured: all three agents unavailable, debate failed, verification rejected,
-  risk denied with zero exposure, and no fabricated evidence/confidence.
-- Bounded, locked and idempotent in-process store; stable global error schema.
+- Public-data deterministic research trigger for registered BTC/USDT and ETH/USDT timeframes.
+  It consumes only closed Binance public candles, computes the existing point-in-time feature
+  set, classifies regime, routes the rule agent, runs critic/consensus/allocation and emits
+  source-bound technical evidence.
+- `AVAILABLE` means the research computation completed; `NO_DECISION` remains a legitimate
+  result. Rule scores are labeled `HEURISTIC_SCORE`, target-distance output is labeled
+  `TARGET_DISTANCE_HEURISTIC_PROXY`, and neither is presented as calibrated probability or
+  expected return.
+- Quantitative and LLM specialist runtimes remain explicitly unbound/unconfigured. Debate and
+  specialist Verification are not run, and Risk always returns zero exposure with
+  `RESEARCH_ONLY_NO_EXECUTION_AUTHORITY`.
+- Bounded, locked and idempotent in-process store with in-flight request deduplication,
+  immutable scope fingerprints and 409 rejection on request-id reuse across scopes.
 - Restricted local dashboard CORS with no credentials and narrow methods/headers.
-- Dashboard run action with loading/error/empty/unavailable states and inspectable Agent,
-  Debate, Evidence, Verification/Risk, Prediction History and System Health panels.
+- Dashboard run action with loading/error/empty/available/unavailable states and inspectable
+  Agent, Debate, Evidence, Verification/Risk, Prediction History and System Health panels.
+- BTC/ETH and timeframe controls are wired into analysis; scope changes abort/ignore stale
+  responses and clear old analysis. Forming candles are excluded from the displayed closed
+  candle series.
+- Chat health is probed separately. When Gemini configuration is absent, chat controls are
+  disabled with an explicit reason while deterministic research analysis remains usable.
 - Dashboard health probes only the local health endpoint, not exchange availability.
 
 ## Verification
 
-- API tests: 3 passed.
-- Frontend tests: 3 passed.
+- Focused runtime/API/chat/adapter/projection tests: 31 passed.
+- Frontend tests: 8 passed.
 - Frontend production build: passed (one non-blocking chunk-size warning).
-- `npm audit`: 0 vulnerabilities after upgrading Vite/Vitest/plugin.
-- Full Python pytest: 576 passed, 12 skipped, 1 known Alembic failure.
-- Ruff/diff: clean; mypy remains 180-error baseline.
-- Independent review: no remaining CRITICAL/HIGH/MEDIUM findings after fixes.
+- `npm audit`: 0 vulnerabilities.
+- Full Python pytest: 635 passed, 12 skipped, 0 failed.
+- Ruff/diff: clean; full mypy has 183 existing errors in 69 files, below the 202-error
+  campaign-final baseline and with no error in the new runtime/API files.
+- Real browser acceptance: BTC/USDT 4h and ETH/USDT 1h both returned `AVAILABLE`,
+  `NO_DECISION`, five explicit agent/runtime states and 13 public technical evidence records.
+- Independent review findings for temporal lineage, idempotency races, UI scope attribution,
+  heuristic-return labeling and unverified approval state were fixed and regression-tested.
+- Final review also caught forming-candle contamination in the legacy projection path,
+  cancellation propagation across idempotent followers and narrow-screen toolbar overflow.
+  Training/inference now enforce closed-and-published boundaries with invariance tests,
+  follower waits are cancellation-isolated, and mobile controls stack with a local scrolling
+  timeframe strip.
 
 No secrets are returned. No live trading, private API or real-order endpoint was introduced.
-The runtime is intentionally and visibly `UNAVAILABLE` until real Phase 6–9 dependencies are
-configured; the UI never presents placeholder output as a completed prediction.
+This is a deterministic research surface, not the full Phase 6–9 model/LLM authority chain.
+The UI never presents the result as an approved prediction or execution authorization.

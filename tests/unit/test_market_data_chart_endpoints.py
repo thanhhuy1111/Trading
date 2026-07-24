@@ -130,6 +130,40 @@ def test_trend_projection_serves_only_approved_horizons_from_a_real_artifact(
     assert abs(float(body["points"][0]["projected_price"]) - last_close) < 0.01
 
 
+def test_forming_candle_cannot_change_served_projection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    closed = _rising_candles(40)
+    forming = closed[-1].model_copy(
+        update={
+            "open_time": closed[-1].open_time + timedelta(hours=1),
+            "close_time": closed[-1].close_time + timedelta(hours=1),
+            "exchange_timestamp": closed[-1].exchange_timestamp + timedelta(hours=1),
+            "close_price": Decimal("999999"),
+            "high_price": Decimal("1000000"),
+            "is_closed": False,
+        }
+    )
+    _write_fixture_artifact(tmp_path, monkeypatch)
+
+    _patch_fetch_candles(monkeypatch, closed)
+    with TestClient(app) as client:
+        base = client.get(
+            "/market-data/trend-projection",
+            params={"symbol": SYMBOL, "timeframe": "1h", "projection_bars": 12},
+        ).json()
+
+    _patch_fetch_candles(monkeypatch, [*closed, forming])
+    with TestClient(app) as client:
+        appended = client.get(
+            "/market-data/trend-projection",
+            params={"symbol": SYMBOL, "timeframe": "1h", "projection_bars": 12},
+        ).json()
+
+    assert appended["points"] == base["points"]
+
+
 def test_trend_projection_unavailable_when_trained_but_no_horizon_approved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

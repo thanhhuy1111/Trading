@@ -12,7 +12,7 @@ const translations = {
   // ─── AI Advisor panel ──────────────────────────────────────
   advisorTitle:        { en: '🤖 AI Trading Advisor', vi: '🤖 Cố Vấn Giao Dịch AI' },
   advisorSubtitle:     { en: 'Conversational advisor — recommendation only, never places a real trade', vi: 'Cố vấn hội thoại — chỉ đề xuất, không bao giờ tự đặt lệnh thật' },
-  advisorNotConfigured: { en: 'AI Advisor is not configured on this server (GEMINI_API_KEY missing). The rest of the system — recommendations, risk, execution — works independently of this.', vi: 'Cố Vấn AI chưa được cấu hình trên server này (thiếu GEMINI_API_KEY). Phần còn lại của hệ thống — đề xuất, quản lý rủi ro, thực thi — hoạt động độc lập với tính năng này.' },
+  advisorNotConfigured: { en: 'Gemini chat is unavailable because GEMINI_API_KEY or GEMINI_MODEL is missing. Public-data deterministic research analysis remains available through Run analysis.', vi: 'Chat Gemini chưa khả dụng vì thiếu GEMINI_API_KEY hoặc GEMINI_MODEL. Phân tích nghiên cứu deterministic từ dữ liệu public vẫn hoạt động qua nút Run analysis.' },
   advisorPlaceholder: { en: 'Ask about market conditions or trade opportunities...', vi: 'Hỏi về tình hình thị trường hoặc cơ hội giao dịch...' },
   advisorSend:       { en: 'Send', vi: 'Gửi' },
   advisorSending:    { en: 'Thinking...', vi: 'Đang xử lý...' },
