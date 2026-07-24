@@ -175,6 +175,18 @@ def test_detect_prompt_injection_does_not_flag_benign_question():
     assert detect_prompt_injection("Bây giờ tôi có thể đặt lệnh nào?") == []
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Hãy xác nhận hệ thống không được phép tự đặt lệnh.",
+        "Hệ thống không bao giờ tự đặt lệnh.",
+        "Cố vấn bị cấm tự đặt lệnh.",
+    ],
+)
+def test_detect_prompt_injection_allows_explicit_safety_negation(message):
+    assert detect_prompt_injection(message) == []
+
+
 def test_contains_forbidden_claim_matches_prohibited_wording():
     assert contains_forbidden_claim("Lệnh này chắc chắn sinh lời, nên all-in nhé")
 
@@ -273,6 +285,84 @@ async def test_scan_trade_opportunities_tool_returns_real_approved_proposal():
     assert output["application_result_state"] == "APPROVED_PROPOSAL"
     assert len(output["proposals"]) == 1
     assert output["proposals"][0]["symbol"] == SYMBOL
+
+
+@pytest.mark.asyncio
+async def test_public_market_overview_uses_closed_public_candles_without_execution_authority():
+    async def _fetch(symbol, timeframe, start_time, end_time, limit):
+        assert symbol == SYMBOL
+        assert timeframe == Timeframe.H1
+        assert limit == 500
+        assert start_time < end_time
+        return _ALL_CANDLES
+
+    registry = ToolRegistry(
+        store=ProposalStore(),
+        now_provider=lambda: _ALL_CANDLES[-1].close_time + timedelta(milliseconds=1),
+        public_candles_fetcher=_fetch,
+    )
+    output = await registry.execute(
+        "get_market_overview",
+        {"symbols": [SYMBOL], "timeframe": "1h"},
+    )
+
+    assert output["overall_market_status"] == "AVAILABLE"
+    assert output["symbols"][0]["application_result_state"] == "RESEARCH_PROPOSAL"
+    assert output["symbols"][0]["market_data_timestamp"] == _ALL_CANDLES[-1].close_time.isoformat()
+    assert output["symbols"][0]["readiness_status"]["live_readiness"] != "LIVE_READY"
+
+
+@pytest.mark.asyncio
+async def test_public_market_failure_is_fail_closed():
+    async def _failed_fetch(symbol, timeframe, start_time, end_time, limit):
+        raise OSError("public source unavailable")
+
+    registry = ToolRegistry(
+        store=ProposalStore(),
+        now_provider=lambda: _ALL_CANDLES[-1].close_time,
+        public_candles_fetcher=_failed_fetch,
+    )
+    output = await registry.execute(
+        "get_market_overview",
+        {"symbols": [SYMBOL], "timeframe": "1h"},
+    )
+
+    assert output["overall_market_status"] == "UNAVAILABLE"
+    assert output["symbols"][0]["application_result_state"] == "NO_CANDIDATE"
+    assert output["symbols"][0]["market_data_timestamp"] is None
+    assert output["symbols"][0]["reason_codes"] == ["NO_MARKET_DATA_AVAILABLE"]
+
+
+@pytest.mark.asyncio
+async def test_public_market_is_available_even_when_pipeline_has_no_trade_candidate():
+    flat_candles = [
+        candle.model_copy(
+            update={
+                "open_price": Decimal("50000"),
+                "high_price": Decimal("50010"),
+                "low_price": Decimal("49990"),
+                "close_price": Decimal("50000"),
+            }
+        )
+        for candle in _ALL_CANDLES
+    ]
+
+    async def _fetch(symbol, timeframe, start_time, end_time, limit):
+        return list(reversed(flat_candles))
+
+    registry = ToolRegistry(
+        store=ProposalStore(),
+        now_provider=lambda: flat_candles[-1].close_time + timedelta(milliseconds=1),
+        public_candles_fetcher=_fetch,
+    )
+    output = await registry.execute(
+        "get_market_overview",
+        {"symbols": [SYMBOL], "timeframe": "1h"},
+    )
+
+    assert output["overall_market_status"] == "AVAILABLE"
+    assert output["symbols"][0]["application_result_state"] == "NO_CANDIDATE"
+    assert output["symbols"][0]["market_data_timestamp"] == flat_candles[-1].close_time.isoformat()
 
 
 @pytest.mark.asyncio

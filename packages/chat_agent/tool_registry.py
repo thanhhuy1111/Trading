@@ -19,8 +19,9 @@ services `apps/api/routers/recommendations.py` uses -- never a separate, more fo
 code path.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict
+import asyncio
+from datetime import datetime, timedelta, timezone
+from typing import Any, Awaitable, Callable, Dict, Sequence
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -37,7 +38,9 @@ from packages.chat_agent.tool_schemas import (
     json_schema_for,
 )
 from packages.evidence.store import EvidenceStore, evidence_store
-from packages.market_data.models import Timeframe
+from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
+from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
+from packages.market_data.models import Candle, Timeframe
 from packages.ports.interfaces import RecommendationRequest
 from packages.runtime.candles_cache import cached_candles_provider
 from packages.runtime.proposal_store import ProposalStore, proposal_store
@@ -69,6 +72,14 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
 ALLOWED_TOOL_NAMES = frozenset(TOOL_DESCRIPTIONS.keys())
 
 _NO_DATA_STATES = frozenset({"NO_CANDIDATE", "DATA_QUALITY_FAILED", "STALE_DATA"})
+_PUBLIC_MARKET_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT"})
+_PUBLIC_LOOKBACK_BARS = 380
+_CANDLE_PUBLICATION_LAG = timedelta(milliseconds=1)
+
+PublicCandlesFetcher = Callable[
+    [str, Timeframe, datetime, datetime, int],
+    Awaitable[Sequence[Candle]],
+]
 
 _DEFAULT_RECOMMENDATION_SERVICE = BaselineRecommendationService(candles_provider=cached_candles_provider)
 
@@ -80,11 +91,13 @@ class ToolRegistry:
         evidence_svc: EvidenceStore = evidence_store,
         store: ProposalStore = proposal_store,
         now_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        public_candles_fetcher: PublicCandlesFetcher | None = None,
     ) -> None:
         self._recommendation_service = recommendation_svc
         self._evidence_service = evidence_svc
         self._store = store
         self._now_provider = now_provider
+        self._public_candles_fetcher = public_candles_fetcher
 
     def definitions(self) -> list[AgentToolDefinition]:
         return [
@@ -109,16 +122,26 @@ class ToolRegistry:
     async def _handle_get_market_overview(self, input_: GetMarketOverviewInput) -> Dict[str, Any]:
         timeframe = _parse_timeframe(input_.timeframe)
         now = self._now_provider()
+        recommendation_service, public_market_timestamps = await self._service_for_public_request(
+            input_.symbols,
+            timeframe,
+            now,
+        )
         symbols_overview = []
         for symbol in input_.symbols:
             request = RecommendationRequest(request_id=uuid4(), symbols=[symbol], timeframe=timeframe, as_of_time=now)
-            result = await self._recommendation_service.analyze(request, symbol)
+            result = await recommendation_service.analyze(request, symbol)
+            market_data_timestamp = (
+                public_market_timestamps.get(symbol)
+                if self._public_candles_fetcher is not None
+                else result.market_data_timestamp
+            )
             symbols_overview.append(
                 {
                     "symbol": symbol,
                     "timeframe": timeframe.value,
                     "market_data_timestamp": (
-                        result.market_data_timestamp.isoformat() if result.market_data_timestamp else None
+                        market_data_timestamp.isoformat() if market_data_timestamp else None
                     ),
                     "application_result_state": result.application_result_state,
                     "readiness_status": result.readiness_status.model_dump(mode="json"),
@@ -126,11 +149,18 @@ class ToolRegistry:
                     "limitations": result.limitations,
                 }
             )
-        overall_market_status = (
-            "UNAVAILABLE"
-            if symbols_overview and all(s["application_result_state"] in _NO_DATA_STATES for s in symbols_overview)
-            else "AVAILABLE"
-        )
+        if self._public_candles_fetcher is not None:
+            overall_market_status = (
+                "AVAILABLE"
+                if any(s["market_data_timestamp"] is not None for s in symbols_overview)
+                else "UNAVAILABLE"
+            )
+        else:
+            overall_market_status = (
+                "UNAVAILABLE"
+                if symbols_overview and all(s["application_result_state"] in _NO_DATA_STATES for s in symbols_overview)
+                else "AVAILABLE"
+            )
         return {
             "generated_at": now.isoformat(),
             "overall_market_status": overall_market_status,
@@ -140,10 +170,11 @@ class ToolRegistry:
     async def _handle_scan_trade_opportunities(self, input_: ScanTradeOpportunitiesInput) -> Dict[str, Any]:
         timeframe = _parse_timeframe(input_.timeframe)
         now = self._now_provider()
+        recommendation_service, _ = await self._service_for_public_request(input_.symbols, timeframe, now)
         request = RecommendationRequest(
             request_id=uuid4(), symbols=input_.symbols, timeframe=timeframe, as_of_time=now,
         )
-        result = await self._recommendation_service.scan(request)
+        result = await recommendation_service.scan(request)
         self._store.remember(result.proposals)
         proposals = result.proposals[: input_.maximum_results]
         return {
@@ -188,6 +219,86 @@ class ToolRegistry:
             "reason_codes": proposal.reason_codes,
         }
 
+    async def _service_for_public_request(
+        self,
+        symbols: list[str],
+        timeframe: Timeframe,
+        now: datetime,
+    ) -> tuple[BaselineRecommendationService, dict[str, datetime]]:
+        """Build a request-local service from closed public candles.
+
+        The async market-data adapter is resolved before entering the synchronous
+        recommendation runtime. The resulting provider is an immutable in-memory view scoped
+        to this request, so concurrent chats cannot overwrite one another's market data.
+        Provider failures and unsupported symbols become an empty dataset and therefore the
+        existing recommendation pipeline's explicit fail-closed non-trade state.
+        """
+        if self._public_candles_fetcher is None:
+            return self._recommendation_service, {}
+
+        interval = TIMEFRAME_INTERVAL[timeframe]
+        start = now - interval * _PUBLIC_LOOKBACK_BARS
+
+        async def _fetch_one(symbol: str) -> tuple[str, list[Candle]]:
+            if symbol not in _PUBLIC_MARKET_SYMBOLS:
+                return symbol, []
+            try:
+                candles = list(
+                    await self._public_candles_fetcher(
+                        symbol,
+                        timeframe,
+                        start,
+                        now,
+                        500,
+                    )
+                )
+            except Exception:  # noqa: BLE001 - source failures must become safe unavailable state
+                return symbol, []
+
+            if any(
+                candle.exchange != "binance"
+                or candle.symbol != symbol
+                or candle.timeframe != timeframe
+                for candle in candles
+            ):
+                return symbol, []
+
+            return symbol, [
+                candle
+                for candle in candles
+                if candle.is_closed and candle.close_time + _CANDLE_PUBLICATION_LAG <= now
+            ]
+
+        fetched = await asyncio.gather(*(_fetch_one(symbol) for symbol in symbols))
+        candles_by_symbol = {symbol: tuple(candles) for symbol, candles in fetched}
+        market_timestamps = {
+            symbol: max(candle.close_time for candle in candles)
+            for symbol, candles in candles_by_symbol.items()
+            if candles
+        }
+
+        def _request_candles(
+            symbol: str,
+            requested_timeframe: Timeframe,
+            requested_start: datetime,
+            requested_end: datetime,
+        ) -> list[Candle]:
+            if requested_timeframe != timeframe:
+                return []
+            return [
+                candle
+                for candle in candles_by_symbol.get(symbol, ())
+                if requested_start <= candle.close_time <= requested_end
+            ]
+
+        return (
+            BaselineRecommendationService(
+                candles_provider=_request_candles,
+                evidence_service=self._evidence_service,
+            ),
+            market_timestamps,
+        )
+
 
 def _parse_timeframe(value: str) -> Timeframe:
     try:
@@ -196,4 +307,5 @@ def _parse_timeframe(value: str) -> Timeframe:
         return Timeframe.H1
 
 
-tool_registry = ToolRegistry()
+_public_market_provider = BinancePublicMarketDataProvider()
+tool_registry = ToolRegistry(public_candles_fetcher=_public_market_provider.fetch_candles)

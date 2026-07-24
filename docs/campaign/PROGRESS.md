@@ -776,6 +776,38 @@ bypass was found.
   records; both current observations legitimately returned `NO_DECISION`.
 - Live/private flags remain false; no secret, private exchange call or order path was added.
 
+## Post-campaign activation — Gemini advisor public-data flow
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Connected the two market-reading chat tools to closed Binance public spot candles through
+  a request-local in-memory provider for BTCUSDT/ETHUSDT.
+- Preserved the existing recommendation, evidence, strategy-sleeve and portfolio-risk gates;
+  public data can yield only the pipeline's honest research/non-trade states and cannot create
+  approval or execution authority.
+- Reported the latest closed candle as `market_data_timestamp` and kept market-data
+  availability distinct from whether a strategy emitted a trade intent.
+- Corrected the prompt-injection guard so explicit safety statements such as “không được phép
+  tự đặt lệnh” are not rejected, while affirmative auto-order instructions remain blocked.
+- Kept Gemini credentials backend-only and ephemeral during operational validation; no key or
+  private exchange credential was written to the repository.
+
+### Verification
+
+- Targeted chat/API tests: 44 passed; Ruff and diff checks passed.
+- Full Python virtualenv suite: 641 passed, 12 skipped, 0 failed.
+- Dashboard: 8 tests passed and production build passed.
+- Real API/UI check used Gemini 3.6 Flash and the allowlisted `get_market_overview` tool over
+  public 1h candles. BTCUSDT returned `RESEARCH_PROPOSAL`, ETHUSDT returned `NO_CANDIDATE`,
+  and both returned `RESEARCH_ONLY` with live readiness `DISABLED`.
+- Dashboard “Run analysis” returned 13 source-bound evidence records; Verification was not run
+  without configured specialists and Risk denied execution with
+  `RESEARCH_ONLY_NO_EXECUTION_AUTHORITY`.
+- No live trading, private exchange API, approval-gate change, fabricated model result or order
+  path was introduced.
+
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).

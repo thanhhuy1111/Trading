@@ -67,6 +67,11 @@ _INJECTION_REGEX = re.compile(
 _FORBIDDEN_CLAIM_REGEX = re.compile(
     "|".join(re.escape(p) for p in FORBIDDEN_CLAIM_PATTERNS), re.IGNORECASE
 )
+_NEGATED_AUTO_ORDER_PREFIX = re.compile(
+    r"(?:kh[oô]ng(?:\s+được(?:\s+phép)?|\s+bao\s+giờ|\s+thể)?|"
+    r"chưa|cấm)\s*$",
+    re.IGNORECASE,
+)
 
 # Matches common LLM API key shapes so they can never leak into a log line, even if a
 # provider error message or a user message happens to contain one.
@@ -78,8 +83,15 @@ _SECRET_PATTERNS = [
 
 
 def detect_prompt_injection(user_text: str) -> List[str]:
-    """Returns the list of matched injection patterns (empty if none)."""
-    return [m.group(0) for m in _INJECTION_REGEX.finditer(user_text)]
+    """Returns actionable injection matches without flagging explicit safety negation."""
+    matches: List[str] = []
+    for match in _INJECTION_REGEX.finditer(user_text):
+        if match.group(0).lower() == "tự đặt lệnh":
+            prefix = user_text[max(0, match.start() - 40) : match.start()]
+            if _NEGATED_AUTO_ORDER_PREFIX.search(prefix):
+                continue
+        matches.append(match.group(0))
+    return matches
 
 
 def contains_forbidden_claim(text: str) -> List[str]:
