@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 13 — Experimental Data Collection
-- Last completed task: Phase 12 — Paper Trading
-- Next task: Phase 13 — Experimental Data Collection
+- Current phase: Phase 14 — Advanced Expansion
+- Last completed task: Phase 13 — Experimental Data Collection
+- Next task: Phase 14 — Advanced Expansion
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -633,6 +633,36 @@ correctness fixes. Reviewer did not edit files.
 
 Phase 13 — append-only experimental data capture, deterministic export and honest aggregate
 reporting.
+
+## Phase 13 — Experimental Data Collection
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Canonical checksummed capture for every required input, version, multi-agent decision,
+  outcome, paper PnL, provider telemetry and data-quality field.
+- Time-matured outcomes are independent append-only horizon events, so the original analysis
+  is never rewritten and future information cannot enter its envelope.
+- Reproducible experiment IDs and locked append-only persistence with exact-replay idempotency.
+- Non-overwriting atomic JSONL export, explicit manual-audited retention and a data dictionary.
+- Reports use only observed values and preserve nulls for unavailable outcomes/cost.
+
+### Independent safety review
+
+Independent read-only review found no remaining CRITICAL/HIGH/MEDIUM after fixes. Reviewer did
+not edit files.
+
+### Verification
+
+- Experiment tests: 5 passed.
+- Full suite: 594 passed, 12 skipped, 1 known Alembic failure.
+- Targeted Ruff and mypy clean.
+- Safety defaults remain false; no network, private API or trading path added.
+
+### Next task
+
+Phase 14 — feature-flagged advanced source protocols and safe-unavailable research expansion.
 
 ### Commit and push
 

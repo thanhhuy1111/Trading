@@ -211,3 +211,15 @@ historical candles only; runtime/replay stores are isolated and incomplete windo
 The Phase 12 tests are offline and deterministic. They cover fee/slippage, cash protection,
 duplicate orders/fills, retry after rejected accounting, equity/drawdown and report history.
 No private API, live-order path or SHORT support was added.
+
+## Phase 13 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| `tests/unit/test_experiments.py` | 5 passed |
+| `.venv/bin/pytest tests/ -q` | 594 passed, 12 skipped, 1 failed |
+| Targeted Ruff | clean |
+| `.venv/bin/mypy packages/experiments` | clean |
+
+Tests use synthetic contract records only. No performance evidence, market metric, credential,
+private API or live-trading behavior was created.
