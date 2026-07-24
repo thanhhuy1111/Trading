@@ -139,6 +139,16 @@ const translations = {
   registeredSymbols: { en: 'Registered Canonical Symbols', vi: 'Các Cặp Tiền Đã Đăng Ký' },
   loadingSymbols:    { en: 'Loading symbols...', vi: 'Đang tải cặp tiền...' },
 
+  // Candlestick chart
+  chartTitle:              { en: 'Price Chart', vi: 'Biểu Đồ Giá' },
+  chartSymbolLabel:        { en: 'Symbol', vi: 'Cặp Tiền' },
+  chartTimeframeLabel:     { en: 'Timeframe', vi: 'Khung Thời Gian' },
+  chartLoading:            { en: 'Loading chart...', vi: 'Đang tải biểu đồ...' },
+  chartNoData:             { en: 'No candle data available.', vi: 'Không có dữ liệu nến.' },
+  chartLoadError:          { en: 'Could not load chart data.', vi: 'Không tải được dữ liệu biểu đồ.' },
+  chartProjectionLabel:    { en: 'Technical projection (EMA-20 slope) — not an AI/ML forecast.', vi: 'Đường chiếu kỹ thuật (EMA-20 slope) — không phải dự đoán AI/ML.' },
+  chartProjectionUnavailable: { en: 'Not enough history to project a trend line yet.', vi: 'Chưa đủ dữ liệu để chiếu đường xu hướng.' },
+
   // ─── Config tab ───────────────────────────────────────────
   configTitle:       { en: 'Dynamic Configuration Manager', vi: 'Quản Lý Cấu Hình Động' },
   versionedAudited:  { en: 'Versioned & Audited', vi: 'Có Phiên Bản & Kiểm Toán' },

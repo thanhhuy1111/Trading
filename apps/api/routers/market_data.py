@@ -1,13 +1,16 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from packages.features.models import FeatureComputationRequest
+from packages.features.pipeline import feature_pipeline
 from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
-from packages.market_data.models import Timeframe
+from packages.market_data.historical_quality import TIMEFRAME_INTERVAL
+from packages.market_data.models import Candle, Timeframe
 from packages.market_data.symbol_registry import symbol_registry
 
 router = APIRouter(prefix="/market-data", tags=["Market Data Platform"])
@@ -65,30 +68,93 @@ async def get_live_prices(symbols: str = Query("BTC/USDT,ETH/USDT")) -> Dict[str
     }
 
 
+def _candle_to_dict(c: Candle) -> Dict[str, Any]:
+    return {
+        "exchange": c.exchange,
+        "symbol": c.symbol,
+        "timeframe": c.timeframe.value,
+        "open_time": c.open_time.isoformat(),
+        "close_time": c.close_time.isoformat(),
+        "open_price": str(c.open_price),
+        "high_price": str(c.high_price),
+        "low_price": str(c.low_price),
+        "close_price": str(c.close_price),
+        "volume": str(c.volume),
+        "is_closed": c.is_closed,
+    }
+
+
+async def _fetch_real_candles(symbol: str, timeframe: Timeframe, limit: int) -> Sequence[Candle]:
+    """Real historical OHLCV from Binance's public REST API. Never fabricated -- a network
+    or symbol error returns an empty sequence (an honest "no data available"), never a
+    synthetic fill-in."""
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - TIMEFRAME_INTERVAL[timeframe] * limit
+    try:
+        return await _binance_provider.fetch_candles(symbol, timeframe, start_time, end_time, limit)
+    except Exception:  # noqa: BLE001 - network/adapter errors degrade to "no data", never a 500
+        return []
+
+
 @router.get("/candles")
 async def get_candles(
     symbol: str = Query("BTC/USDT"),
     timeframe: Timeframe = Timeframe.M1,
     limit: int = 100
 ) -> List[Dict[str, Any]]:
+    """Real historical candles from Binance's public REST API (GET /api/v3/klines) --
+    public endpoint only, no API key, no private data."""
+    candles = await _fetch_real_candles(symbol, timeframe, limit)
+    return [_candle_to_dict(c) for c in candles]
+
+
+@router.get("/trend-projection")
+async def get_trend_projection(
+    symbol: str = Query("BTC/USDT"),
+    timeframe: Timeframe = Timeframe.M1,
+    projection_bars: int = Query(12, ge=1, le=30),
+) -> Dict[str, Any]:
+    """A technical extrapolation of the EMA-20 slope -- the SAME feature
+    packages.agents.trend.TrendAgent already reads to decide LONG/SHORT -- projected forward
+    geometrically from the last real close. This is a technical heuristic, not an AI/ML
+    price forecast, and the response says so explicitly via `basis`. Returns
+    `available: false` (never a fabricated flat line) when there isn't enough real history
+    to compute the slope."""
     now = datetime.now(timezone.utc)
-    base_price = Decimal("65000.00") if "BTC" in symbol else Decimal("3500.00")
-    candles = []
-    for i in range(limit):
-        candles.append({
-            "exchange": "binance",
-            "symbol": symbol,
-            "timeframe": timeframe.value,
-            "open_time": now.isoformat(),
-            "close_time": now.isoformat(),
-            "open_price": str(base_price + Decimal(i)),
-            "high_price": str(base_price + Decimal(i) + Decimal("10.0")),
-            "low_price": str(base_price + Decimal(i) - Decimal("5.0")),
-            "close_price": str(base_price + Decimal(i) + Decimal("2.0")),
-            "volume": "15.4",
-            "is_closed": True
+    candles = await _fetch_real_candles(symbol, timeframe, limit=100)
+    if not candles:
+        return {"available": False, "reason": "NO_MARKET_DATA_AVAILABLE", "points": []}
+
+    sorted_candles = sorted(candles, key=lambda c: c.open_time)
+    last_candle = sorted_candles[-1]
+
+    request = FeatureComputationRequest(
+        exchange="binance", symbol=symbol, timeframe=timeframe,
+        feature_set="standard_v1", as_of_time=last_candle.close_time,
+    )
+    snapshot = feature_pipeline.compute(request, list(sorted_candles))
+    slope_raw = snapshot.values.get("ema_20_slope")
+    if slope_raw is None:
+        return {"available": False, "reason": "INSUFFICIENT_HISTORY", "points": []}
+
+    slope = Decimal(str(slope_raw))
+    last_close = last_candle.close_price
+    interval = TIMEFRAME_INTERVAL[timeframe]
+    points = []
+    for t in range(1, projection_bars + 1):
+        projected_price = last_close * (Decimal("1") + slope) ** t
+        points.append({
+            "time": (last_candle.close_time + interval * t).isoformat(),
+            "projected_price": str(projected_price),
         })
-    return candles
+
+    return {
+        "available": True,
+        "basis": "ema_20_slope",
+        "slope": str(slope),
+        "as_of_time": now.isoformat(),
+        "points": points,
+    }
 
 
 @router.get("/trades")

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import CandleChart from './components/CandleChart';
 import { useTranslation, type Lang } from './i18n';
 
 interface SystemStatus {
@@ -172,6 +173,10 @@ export default function App() {
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const [recResult, setRecResult] = useState<RecommendationResponse | null>(null);
+
+  // Market Data tab chart
+  const [chartSymbol, setChartSymbol] = useState('BTCUSDT');
+  const [chartTimeframe, setChartTimeframe] = useState('1h');
 
   // Real live prices from Binance public REST API (via backend /market-data/live-prices)
   useEffect(() => {
@@ -977,6 +982,35 @@ export default function App() {
                   <span className="px-2.5 py-1 rounded bg-red-950 text-xs font-mono text-red-400 border border-red-500/30">Trading Disabled</span>
                 </div>
               </div>
+
+              <div className="flex items-center gap-3">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">{t('chartSymbolLabel')}</label>
+                  <input
+                    type="text"
+                    value={chartSymbol}
+                    onChange={(e) => setChartSymbol(e.target.value.toUpperCase())}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-100 w-40 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">{t('chartTimeframeLabel')}</label>
+                  <select
+                    value={chartTimeframe}
+                    onChange={(e) => setChartTimeframe(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="1m">1m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                  </select>
+                </div>
+              </div>
+
+              <CandleChart symbol={chartSymbol} timeframe={chartTimeframe} lang={lang} />
 
               <div className="glass-panel p-6 rounded-xl border border-slate-800 space-y-4">
                 <h3 className="text-sm font-semibold text-slate-300">Registered Canonical Symbols</h3>
