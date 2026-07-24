@@ -137,3 +137,15 @@ offline; không có Gemini call thật, secret, private exchange API hoặc live
 Full-suite failure vẫn là missing `infra/migrations/alembic.ini`. Specialist tests hoàn toàn
 offline; synthetic approved-runtime fixture chỉ ghi artifact dưới `tmp_path`. Không có model
 persistent, Gemini call thật, private exchange API, order path hoặc live-trading change.
+
+## Phase 7 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Offline debate tests | 6 passed |
+| `.venv/bin/pytest tests/ -q` | 566 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files (baseline) |
+
+Full-suite failure vẫn là known missing Alembic config. Debate providers are deterministic
+test doubles; no network, private API, order path or live-trading change.

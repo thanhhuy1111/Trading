@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 7 — Bull–Bear Debate
-- Last completed task: Phase 6 — Specialist Agents
-- Next task: Phase 7 — Bull–Bear Debate
+- Current phase: Phase 8 — Verification & Risk
+- Last completed task: Phase 7 — Bull–Bear Debate
+- Next task: Phase 8 — Verification & Risk
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -439,6 +439,40 @@ were fixed with regression coverage. Final review reported none remaining.
 
 Phase 7 — bounded, evidence-only Bull–Bear Debate with persistent transcript and safe partial
 failure handling.
+
+## Phase 7 — Bull–Bear Debate
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Explicit Bull and Bear roles, maximum two rounds, exact stance validation and evidence-only
+  arguments.
+- Current-analysis/time validation, exact numeric claim matching, mandatory invalidation
+  conditions and same-side new-evidence requirement.
+- Append-only immutable transcript with prompt/model/token/latency telemetry and pre-call
+  reservation/idempotent completed reruns.
+- `COMPLETE`, `PARTIAL` and `FAILED` distinguish two-sided, one-sided and no-valid-argument
+  outcomes. Provider failures never create a successful turn.
+
+### Independent safety review
+
+Initial review found masked one-sided failures, ambiguous assigned-side prompts, missing
+invalidation requirements, naive timestamp crash, duplicate provider side effects and weak
+duplicate detection. All HIGH/MEDIUM findings were corrected and regression-tested; final
+review reported none remaining.
+
+### Verification
+
+- Offline debate tests: 6 passed.
+- Full pytest: 566 passed, 12 skipped, 1 known Alembic failure.
+- Ruff/diff clean; mypy remains the 180-error baseline.
+- Safety flags remain `False/False/False`.
+
+### Next task
+
+Phase 8 — deterministic verification authority and code-based risk engine with independent
+blocking decisions.
 
 ### Commit and push
 
