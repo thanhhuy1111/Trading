@@ -93,6 +93,15 @@ class ApprovalPublicationResult(BaseModel):
     manifest: Optional[XGBoostArtifactManifest] = None
 
 
+class ApprovedModelReference(BaseModel):
+    """Read-only, dual-source reference exposed to the runtime repository."""
+
+    model_config = ConfigDict(frozen=True)
+
+    registry_entry: RegistryEntry
+    receipt: ApprovalReceipt
+
+
 class XGBoostApprovalGate:
     def evaluate(
         self,
@@ -289,6 +298,37 @@ class XGBoostApprovalService:
 
     def get_receipt(self, model_name: str, model_version: str) -> Optional[ApprovalReceipt]:
         return self._receipts.get((model_name, model_version))
+
+    def list_approved_references(self) -> Tuple[ApprovedModelReference, ...]:
+        references: list[ApprovedModelReference] = []
+        for key, receipt in self._receipts.items():
+            entry = self._registry.get(*key)
+            if (
+                receipt.status != ApprovalDecisionStatus.APPROVED
+                or entry is None
+                or entry.status != RegistryEntryStatus.APPROVED
+                or entry.name != receipt.model_name
+                or entry.version != receipt.model_version
+                or entry.artifact_location != receipt.artifact_path
+                or entry.artifact_checksum != receipt.approval_checksum
+                or entry.configuration_hash != receipt.feature_schema_hash
+                or entry.dependencies.get("dataset_checksum")
+                != receipt.dataset_checksum
+                or entry.dependencies.get("gate_version") != receipt.gate_version
+            ):
+                continue
+            references.append(
+                ApprovedModelReference(registry_entry=entry, receipt=receipt)
+            )
+        return tuple(
+            sorted(
+                references,
+                key=lambda item: (
+                    item.registry_entry.name,
+                    item.registry_entry.version,
+                ),
+            )
+        )
 
 
 def _audit_fold(

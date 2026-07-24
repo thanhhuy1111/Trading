@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 4 — XGBoost
-- Last completed task: 4D — Approval & Artifact
-- Next task: 4E — Runtime Inference
+- Current phase: Phase 5 — Technical Analysis Agent
+- Last completed task: 4E — Runtime Inference
+- Next task: Phase 5 — Technical Analysis Agent
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -291,8 +291,63 @@ reviewer did not edit files.
 
 ### Next task
 
-Implement Phase 4E read-only runtime inference. It must dual-verify exact registry state,
-trusted receipt and artifact; otherwise return `UNAVAILABLE` with a stable reason code.
+Proceed to Phase 5 only after the Phase 4E checkpoint is committed and pushed.
+
+## Phase 4E — Runtime Inference
+
+Status: **COMPLETE**
+
+### Files changed
+
+- `packages/retraining/xgboost_approval.py`
+- `packages/retraining/xgboost_runtime.py`
+- `tests/unit/test_xgboost_runtime.py`
+- campaign progress/quality/task docs.
+
+### Delivered
+
+- Read-only `ApprovedModelRepository` accepts only the exact concrete approval service
+  authority, never a mutable registry or structural provider.
+- Registry entry, private service receipt and five-file artifact must all independently be
+  `APPROVED`, exact-match and checksum-consistent. A direct-writer weak model paired with a
+  forged registry entry, receipt and provider cannot cross the authority boundary.
+- Exact model/version selection; omitted version is accepted only for one matching approved
+  model and otherwise returns `AMBIGUOUS_APPROVED_MODEL`.
+- Exact BTCUSDT/BTC-USDT, Binance venue, H4, one-bar horizon, mode, schema, feature
+  names/order/dtypes and feature set version checks with no fallback or imputation.
+- Missing, non-finite, stale, degraded and invalid feature inputs fail closed with stable
+  reason codes. Unavailable outputs leave direction, probabilities, confidence, model ID,
+  snapshot ID and timestamp null.
+- Artifact bytes are read into one in-memory checksummed snapshot before JSON parsing and
+  native model loading, eliminating a verify/read race.
+- Runtime applies stored temperature to raw soft probabilities, revalidates normalization,
+  uses the calibrated argmax direction, and defines confidence as exactly the maximum
+  calibrated probability. Prediction time is the timezone-aware request snapshot as-of.
+
+No API wiring, network call, Gemini/agent integration, private exchange API, order path or
+live-trading change was introduced.
+
+### Independent safety review
+
+Read-only review found and drove fixes for forged structural-provider provenance and
+unhandled disappearing/unreadable artifact failures. Final review reported no
+CRITICAL/HIGH/MEDIUM findings. Its LOW calibration-coverage note was then closed by directly
+comparing runtime output with independently calculated temperature-scaled probabilities.
+
+### Verification
+
+- `.venv/bin/pytest tests/unit/test_xgboost_runtime.py -q` → 7 passed.
+- `.venv/bin/pytest tests/ -q` → 541 passed, 12 skipped, 1 failed.
+- The sole failure remains the known missing `infra/migrations/alembic.ini` baseline issue.
+- `.venv/bin/ruff check .` → clean.
+- `.venv/bin/mypy packages/ apps/` → 180 errors in 67 files, unchanged baseline.
+- `git diff --check` → clean; safety flags remain `False/False/False`.
+
+### Phase 4 outcome
+
+Phases 4A–4E are complete. Synthetic fixtures validate contracts only; no persistent approved
+model or claim of real-market performance was created. Runtime is safely unavailable unless
+an approval-service-backed artifact satisfies every exact gate.
 
 ### Commit and push
 

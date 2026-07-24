@@ -634,34 +634,34 @@ gộp các phase hoặc mở rộng scope âm thầm.
 
 ## 20. Acceptance criteria Phase 4E
 
-- [ ] Runtime dùng read-only approved repository và exact model/version/symbol/timeframe/
+- [x] Runtime dùng read-only approved repository và exact model/version/symbol/timeframe/
   horizon/mode/schema matching.
-- [ ] Chỉ dual-verified `APPROVED` artifact được load; mọi trạng thái khác, direct registry
+- [x] Chỉ dual-verified `APPROVED` artifact được load; mọi trạng thái khác, direct registry
   injection, forged/tampered/uncalibrated artifact bị reject.
-- [ ] Không model trả `UNAVAILABLE` + `NO_APPROVED_MODEL`, không fallback heuristic/model khác.
-- [ ] Missing/invalid/stale feature data trả reason code, không impute hay bịa timestamp.
-- [ ] `confidence` chỉ từ calibrated probability; probability/class order/timestamp contracts
+- [x] Không model trả `UNAVAILABLE` + `NO_APPROVED_MODEL`, không fallback heuristic/model khác.
+- [x] Missing/invalid/stale feature data trả reason code, không impute hay bịa timestamp.
+- [x] `confidence` chỉ từ calibrated probability; probability/class order/timestamp contracts
   được validate.
-- [ ] Runtime tests offline cover success, no model, all unsafe statuses, wrong compatibility,
+- [x] Runtime tests offline cover success, no model, all unsafe statuses, wrong compatibility,
   missing feature, corruption và deterministic fixed-clock output.
-- [ ] Không tích hợp Gemini, Technical Agent hoặc Phase 5.
-- [ ] Targeted/full pytest, Ruff, mypy, diff/safety review hoàn tất và progress được cập nhật.
+- [x] Không tích hợp Gemini, Technical Agent hoặc Phase 5.
+- [x] Targeted/full pytest, Ruff, mypy, diff/safety review hoàn tất và progress được cập nhật.
 
 ## 21. Acceptance criteria toàn Phase 4
 
-- [ ] 4A–4E hoàn thành tuần tự; không bỏ phase.
-- [ ] Có deterministic point-in-time datasets, label pipeline, two modes, lineage/version và
+- [x] 4A–4E hoàn thành tuần tự; không bỏ phase.
+- [x] Có deterministic point-in-time datasets, label pipeline, two modes, lineage/version và
   anti-lookahead/availability tests.
-- [ ] Có đủ four-model evaluation, expanding walk-forward và per-fold/full metrics.
-- [ ] Có fail-closed approval/rejection, artifact checksums/round-trip và bypass tests.
-- [ ] Runtime approved-only, exact schema/compatibility, `NO_APPROVED_MODEL` và không fabricated
+- [x] Có đủ four-model evaluation, expanding walk-forward và per-fold/full metrics.
+- [x] Có fail-closed approval/rejection, artifact checksums/round-trip và bypass tests.
+- [x] Runtime approved-only, exact schema/compatibility, `NO_APPROVED_MODEL` và không fabricated
   confidence/data/timestamp.
-- [ ] Test mới 100% offline; Ruff clean; mypy không vượt baseline; full pytest không có
+- [x] Test mới 100% offline; Ruff clean; mypy không vượt baseline; full pytest không có
   regression mới.
-- [ ] `LIVE_TRADING_ENABLED`, `PRIVATE_EXCHANGE_API_ENABLED` và live feature flag vẫn `False`;
+- [x] `LIVE_TRADING_ENABLED`, `PRIVATE_EXCHANGE_API_ENABLED` và live feature flag vẫn `False`;
   không private API, secret, order hay withdrawal path.
-- [ ] `PROGRESS.md` ghi commands/kết quả thật, known issues, commit và push status.
-- [ ] Mỗi task đạt criteria mới commit/push `main`; không PR; Phase 5 vẫn chưa bắt đầu.
+- [x] `PROGRESS.md` ghi commands/kết quả thật, known issues, commit và push status.
+- [x] Mỗi task đạt criteria mới commit/push `main`; không PR; Phase 5 vẫn chưa bắt đầu.
 
 ## 22. Open risks
 

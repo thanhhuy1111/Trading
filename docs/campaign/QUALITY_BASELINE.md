@@ -99,3 +99,16 @@ XGBoost 3.3.0 chạy trong Python 3.12 `.venv`; ba safety settings vẫn `False`
 Full-suite failure vẫn là missing `infra/migrations/alembic.ini`; không có regression mới.
 Approval tests chỉ ghi artifacts dưới `tmp_path`; không có model weight persistent trong repo.
 Ba safety settings vẫn `False`.
+
+## Phase 4E verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| `tests/unit/test_xgboost_runtime.py` | 7 passed |
+| `.venv/bin/pytest tests/ -q` | 541 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files |
+
+Full-suite failure vẫn là missing `infra/migrations/alembic.ini`; không có regression mới.
+Runtime tests offline, artifacts chỉ dưới `tmp_path`, không có network/private API/order path.
+Ba safety settings vẫn `False`.
