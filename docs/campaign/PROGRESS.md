@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 10 — API & Dashboard
-- Last completed task: Phase 9 — Manager Agent
-- Next task: Phase 10 — API & Dashboard
+- Current phase: Phase 11 — Shadow Trading
+- Last completed task: Phase 10 — API & Dashboard
+- Next task: Phase 11 — Shadow Trading
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -538,6 +538,37 @@ reported none remaining.
 
 Phase 10 — expose the analysis surface through the existing API/dashboard stack with strict
 error and empty-state contracts.
+
+## Phase 10 — API & Dashboard
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Exact market/analysis/prediction/health API paths, locked bounded analysis persistence,
+  stable errors and strict local CORS.
+- Safe rejected execution snapshot exposes all agent/debate/verification/risk states when
+  runtime is not configured, without inventing evidence or confidence.
+- Dashboard can run analysis and inspect agents, debate, evidence, verification/risk,
+  predictions and system health with loading/error/empty/unavailable states.
+- Frontend test stack added; Vite/Vitest upgraded and dependency audit is clean.
+
+### Independent safety review
+
+Review identified placeholder-only inspection, wildcard credentialed CORS, store race/bounds,
+unavailable/error inconsistency, superficial views and missing frontend behavior tests. All
+HIGH/MEDIUM findings were fixed; final review reported none remaining.
+
+### Verification
+
+- API 3 passed; dashboard 3 passed; production build passed.
+- npm audit: zero vulnerabilities.
+- Full Python suite: 576 passed, 12 skipped, 1 known Alembic failure.
+- Ruff/diff clean; safety flags unchanged.
+
+### Next task
+
+Phase 11 — validate and complete existing shadow scheduler/evaluation/idempotency controls.
 
 ### Commit and push
 

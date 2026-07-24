@@ -173,3 +173,17 @@ deterministic code and inputs controlling confidence/volatility are evidence-bou
 
 The one failure remains the known missing Alembic config. Manager tests are offline and the
 authority chain rejects tampered or replayed upstream results.
+
+## Phase 10 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Campaign API tests | 3 passed |
+| Dashboard Vitest | 3 passed |
+| Dashboard build | passed; chunk-size warning only |
+| Dashboard `npm audit` | 0 vulnerabilities |
+| `.venv/bin/pytest tests/ -q` | 576 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+
+The sole Python failure remains missing Alembic config. The API/UI exposes only safe
+unavailable state without private API, order or live-trading behavior.

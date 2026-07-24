@@ -1,16 +1,18 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from apps.api.error_schema import register_error_handlers
+from apps.api.error_schema import REQUEST_ID_HEADER, get_or_create_request_id, register_error_handlers
 from apps.api.routers import (
     agents,
     agents_m4,
     audit,
     backtest,
     backtests,
+    campaign,
     chat,
     configurations,
     data_quality,
@@ -66,10 +68,14 @@ app = FastAPI(
 # Enable CORS for Frontend React Dashboard
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 # Register Routers
@@ -97,8 +103,28 @@ app.include_router(operations.router)
 app.include_router(security.router)
 app.include_router(recommendations.router)
 app.include_router(chat.router)
+app.include_router(campaign.router)
 
 register_error_handlers(app)
+
+
+@app.exception_handler(campaign.CampaignAPIError)
+async def campaign_error_handler(
+    request: Request,
+    exc: campaign.CampaignAPIError,
+) -> JSONResponse:
+    request_id = get_or_create_request_id(request)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": exc.code,
+            "message": exc.message,
+            "request_id": request_id,
+            "reason_codes": [exc.code],
+            "details": None,
+        },
+        headers={REQUEST_ID_HEADER: request_id},
+    )
 
 
 @app.get("/metrics")
