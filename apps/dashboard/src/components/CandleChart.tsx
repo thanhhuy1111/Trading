@@ -40,6 +40,9 @@ interface ChartRow {
   projected?: number;
 }
 
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
+const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
+
 function CandlestickShape(props: any) {
   const { x, y, width, height, payload } = props;
   if (payload.open === undefined || payload.close === undefined) return <g />;
@@ -53,18 +56,49 @@ function CandlestickShape(props: any) {
   const bodyY = y + (payload.high - bodyTopPrice) * pxPerUnit;
   const bodyHeight = Math.max(1, (bodyTopPrice - bodyBottomPrice) * pxPerUnit);
   const wickX = x + width / 2;
-  const bodyX = x + width * 0.2;
-  const bodyWidth = width * 0.6;
+  const bodyX = x + width * 0.22;
+  const bodyWidth = width * 0.56;
   return (
     <g>
-      <line x1={wickX} y1={y} x2={wickX} y2={y + height} stroke={color} strokeWidth={1} />
-      <rect x={bodyX} y={bodyY} width={bodyWidth} height={bodyHeight} fill={color} />
+      <line x1={wickX} y1={y} x2={wickX} y2={y + height} stroke={color} strokeWidth={1.5} />
+      <rect x={bodyX} y={bodyY} width={Math.max(1, bodyWidth)} height={bodyHeight} fill={color} />
     </g>
   );
 }
 
-export default function CandleChart({ symbol, timeframe, lang }: { symbol: string; timeframe: string; lang: Lang }) {
+function ChartTooltip({ active, payload, t }: any) {
+  if (!active || !payload || payload.length === 0) return null;
+  const row: ChartRow = payload[0].payload;
+  if (row.open !== undefined) {
+    const isBullish = (row.close ?? 0) >= row.open;
+    return (
+      <div className="rounded-lg border border-white/10 bg-slate-950/95 px-3 py-2 text-[11px] shadow-xl">
+        <p className="text-slate-500 mb-1">{row.timeLabel}</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono">
+          <span className="text-slate-500">O</span><span className="text-slate-300">{row.open?.toFixed(2)}</span>
+          <span className="text-slate-500">H</span><span className="text-slate-300">{row.high?.toFixed(2)}</span>
+          <span className="text-slate-500">L</span><span className="text-slate-300">{row.low?.toFixed(2)}</span>
+          <span className="text-slate-500">C</span>
+          <span className={isBullish ? 'text-emerald-400' : 'text-rose-400'}>{row.close?.toFixed(2)}</span>
+        </div>
+      </div>
+    );
+  }
+  if (row.projected !== undefined) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-slate-950/95 px-3 py-2 text-[11px] shadow-xl">
+        <p className="text-slate-500 mb-1">{row.timeLabel}</p>
+        <p className="text-amber-400 font-mono">{t('chartProjectionLabel').split(' (')[0]}: {row.projected.toFixed(2)}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+export default function CandleChart({ lang }: { lang: Lang }) {
   const t = useTranslation(lang);
+  const [symbol, setSymbol] = useState('BTCUSDT');
+  const [timeframe, setTimeframe] = useState('1h');
   const [rows, setRows] = useState<ChartRow[]>([]);
   const [projection, setProjection] = useState<TrendProjectionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,6 +159,7 @@ export default function CandleChart({ symbol, timeframe, lang }: { symbol: strin
       }
     };
 
+    setLoading(true);
     load();
     const interval = setInterval(load, 15000);
     return () => {
@@ -133,45 +168,85 @@ export default function CandleChart({ symbol, timeframe, lang }: { symbol: strin
     };
   }, [symbol, timeframe, lang]);
 
+  const lastClose = rows.length > 0 ? [...rows].reverse().find((r) => r.close !== undefined)?.close : undefined;
+  const firstOpen = rows.find((r) => r.open !== undefined)?.open;
+  const changePct = lastClose !== undefined && firstOpen ? ((lastClose - firstOpen) / firstOpen) * 100 : undefined;
+
   return (
-    <div className="glass-panel p-4 rounded-xl border border-slate-800 space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-300">{t('chartTitle')}: {symbol} ({timeframe})</h3>
-        {loading && <span className="text-xs text-slate-500">...</span>}
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-base font-semibold text-slate-100">{symbol}</h2>
+          {lastClose !== undefined && (
+            <span className="text-2xl font-semibold tabular-nums text-slate-50">
+              {lastClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          )}
+          {changePct !== undefined && (
+            <span className={`text-xs font-medium tabular-nums px-1.5 py-0.5 rounded ${changePct >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'}`}>
+              {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/60"
+          >
+            {SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="flex items-center gap-0.5 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+                  timeframe === tf ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {error ? (
-        <div className="h-80 flex items-center justify-center text-sm text-red-400">{error}</div>
-      ) : rows.length === 0 ? (
-        <div className="h-80 flex items-center justify-center text-sm text-slate-500">
-          {loading ? t('chartLoading') : t('chartNoData')}
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={320}>
-          <ComposedChart data={rows} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis
-              dataKey="timeLabel" tick={{ fontSize: 10, fill: '#64748b' }}
-              tickFormatter={(v: string) => v.split(',')[1]?.trim() || v}
-              minTickGap={40}
-            />
-            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#64748b' }} width={70} />
-            <Tooltip
-              contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 12 }}
-              labelFormatter={(v: string) => v}
-            />
-            <Bar dataKey="range" shape={CandlestickShape} isAnimationActive={false} />
-            <Line
-              type="linear" dataKey="projected" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4"
-              dot={false} isAnimationActive={false} connectNulls
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      )}
+      <div className="flex-1 min-h-0 px-3 pt-3">
+        {error ? (
+          <div className="h-full flex items-center justify-center text-sm text-red-400">{error}</div>
+        ) : rows.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-sm text-slate-600">
+            {loading ? t('chartLoading') : t('chartNoData')}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={rows} margin={{ top: 5, right: 8, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis
+                dataKey="timeLabel" tick={{ fontSize: 10, fill: '#475569' }}
+                tickFormatter={(v: string) => v.split(',')[1]?.trim() || v}
+                minTickGap={50} axisLine={{ stroke: 'rgba(255,255,255,0.06)' }} tickLine={false}
+              />
+              <YAxis
+                domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#475569' }} width={64}
+                orientation="right" axisLine={false} tickLine={false}
+                tickFormatter={(v: number) => v.toLocaleString()}
+              />
+              <Tooltip content={<ChartTooltip t={t} />} />
+              <Bar dataKey="range" shape={CandlestickShape} isAnimationActive={false} />
+              <Line
+                type="linear" dataKey="projected" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4"
+                dot={false} isAnimationActive={false} connectNulls
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
-      <p className="text-[11px] text-slate-500">
+      <p className="px-5 py-2.5 text-[11px] text-slate-600 border-t border-white/[0.06]">
         {projection?.available
-          ? `${t('chartProjectionLabel')} (slope: ${projection.slope})`
+          ? `${t('chartProjectionLabel')} · slope ${projection.slope}`
           : t('chartProjectionUnavailable')}
       </p>
     </div>
