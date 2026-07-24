@@ -140,7 +140,7 @@ async def test_full_end_to_end_scenario_research_recommendation_to_readiness() -
     assert stored_shadow.kind.value == "RESEARCH_SHADOW"
 
     # Stage: simulated outcome.
-    due_at = _AS_OF + timedelta(hours=20)
+    due_at = _AS_OF + timedelta(hours=1)
     shadow_service.schedule_evaluation(stored_shadow.shadow_id, due_at=due_at)
     outcomes = await shadow_service.evaluate_due(due_at + timedelta(hours=1))
     assert len(outcomes) == 1

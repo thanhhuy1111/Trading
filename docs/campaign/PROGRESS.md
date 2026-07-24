@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 11 — Shadow Trading
-- Last completed task: Phase 10 — API & Dashboard
-- Next task: Phase 11 — Shadow Trading
+- Current phase: Phase 12 — Paper Trading
+- Last completed task: Phase 11 — Shadow Trading
+- Next task: Phase 12 — Paper Trading
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -569,6 +569,35 @@ HIGH/MEDIUM findings were fixed; final review reported none remaining.
 ### Next task
 
 Phase 11 — validate and complete existing shadow scheduler/evaluation/idempotency controls.
+
+## Phase 11 — Shadow Trading
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Automatic persisted-horizon scheduling (one bar by default), kill switch, store-wide
+  claims, locked idempotency and append-only outcome transition history.
+- Complete point-in-time candle-window validation with retryable missing/provider states.
+- Runtime/replay namespace isolation.
+- Persisted horizon labels/correctness plus barrier/timeout simulated return.
+- Point-in-time periodic report with honest directional and per-agent correctness.
+
+### Independent safety review
+
+Review found arbitrary/optional horizons, incomplete-window fabrication, terminal transient
+failure, replay contamination, profitability mislabeled as accuracy, non-temporal reports and
+concurrency/lineage gaps. All HIGH/MEDIUM findings were fixed; final review reported none.
+
+### Verification
+
+- Shadow plus acceptance/domain focused tests: 34 passed.
+- Full suite: 578 passed, 12 skipped, 1 known Alembic failure.
+- Ruff/diff clean; safety flags unchanged.
+
+### Next task
+
+Phase 12 — validate deterministic paper accounting and irreversible live/private separation.
 
 ### Commit and push
 

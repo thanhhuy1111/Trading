@@ -187,3 +187,14 @@ authority chain rejects tampered or replayed upstream results.
 
 The sole Python failure remains missing Alembic config. The API/UI exposes only safe
 unavailable state without private API, order or live-trading behavior.
+
+## Phase 11 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Shadow + final acceptance + domain focused tests | 34 passed |
+| `.venv/bin/pytest tests/ -q` | 578 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+
+The known failure remains missing Alembic config. Shadow evaluation reads injected public
+historical candles only; runtime/replay stores are isolated and incomplete windows retry.

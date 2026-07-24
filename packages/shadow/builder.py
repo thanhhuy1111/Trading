@@ -4,6 +4,7 @@ honest empty value (`{}` / `[]`) rather than being required - the schema (Dict[s
 demands data a caller doesn't have, but it also never fabricates a substitute."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from packages.domain.entities import ShadowProposal
@@ -37,6 +38,10 @@ def build_shadow_proposal(
     ranking_snapshot: Optional[Dict[str, Any]] = None,
     correlation_snapshot: Optional[Dict[str, Any]] = None,
     portfolio_risk_snapshot: Optional[Dict[str, Any]] = None,
+    prediction_horizon_bars: int = 1,
+    label_version: str = "volatility_band_1bar_v1",
+    label_threshold_return: Optional[Decimal] = None,
+    label_threshold_source: Optional[str] = None,
 ) -> ShadowProposal:
     kind = shadow_kind_for_application_result_state(proposal.application_result_state)
     if kind is None:
@@ -45,16 +50,43 @@ def build_shadow_proposal(
             "(only APPROVED_PROPOSAL and RESEARCH_PROPOSAL produce a TradeProposal to shadow)."
         )
 
+    if prediction_horizon_bars <= 0:
+        raise ValueError("prediction_horizon_bars must be positive")
+    evidence = evidence_snapshot or {}
+    if label_threshold_return is not None:
+        source = (
+            evidence.get(label_threshold_source)
+            if label_threshold_source is not None
+            and label_threshold_source == label_threshold_source.strip()
+            else None
+        )
+        if (
+            not label_threshold_return.is_finite()
+            or label_threshold_return < 0
+            or not isinstance(source, dict)
+            or source.get("label_version") != label_version
+            or source.get("horizon_bars") != prediction_horizon_bars
+            or Decimal(str(source.get("threshold_return")))
+            != label_threshold_return
+        ):
+            raise ValueError("label threshold must match captured evidence metadata")
+    candidate_snapshot = proposal.model_dump(mode="json")
+    candidate_snapshot["prediction_horizon_bars"] = prediction_horizon_bars
+    candidate_snapshot["label_version"] = label_version
+    candidate_snapshot["label_threshold_return"] = (
+        str(label_threshold_return) if label_threshold_return is not None else None
+    )
+    candidate_snapshot["label_threshold_source"] = label_threshold_source
     draft = ShadowProposal(
         kind=kind,
         proposal_id=proposal.proposal_id,
-        candidate_snapshot=proposal.model_dump(mode="json"),
+        candidate_snapshot=candidate_snapshot,
         feature_snapshot=feature_snapshot or {},
         regime_snapshot=regime_snapshot or {},
         agent_assessments_snapshot=agent_assessments_snapshot or [],
         meta_label_snapshot=meta_label_snapshot or {},
         market_context_snapshot=market_context_snapshot or [],
-        evidence_snapshot=evidence_snapshot or {},
+        evidence_snapshot=evidence,
         ranking_snapshot=ranking_snapshot or {},
         correlation_snapshot=correlation_snapshot,
         portfolio_risk_snapshot=portfolio_risk_snapshot or {},

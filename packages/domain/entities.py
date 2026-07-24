@@ -297,6 +297,9 @@ class ShadowOutcome(BaseModel):
     total_cost_bps: Optional[Decimal] = None
     net_return_bps: Optional[Decimal] = None
     barrier_hit: Optional[str] = None  # UPPER | LOWER | None
+    horizon_close: Optional[Decimal] = None
+    actual_label: Optional[str] = None
+    prediction_correct: Optional[bool] = None
     reason_codes: List[str] = Field(default_factory=list)
 
 
