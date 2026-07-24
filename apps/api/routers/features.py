@@ -1,15 +1,24 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from packages.features.derivatives_models import DerivativesFeatureComputationRequest
+from packages.features.derivatives_pipeline import derivatives_feature_pipeline
+from packages.features.derivatives_registry import derivatives_feature_registry
 from packages.features.models import FeatureComputationRequest, Timeframe
 from packages.features.pipeline import feature_pipeline
 from packages.features.registry import feature_registry
+from packages.market_data import derivatives_history
 from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
+from packages.market_data.adapters.binance_futures import BinancePublicFuturesDataProvider
 
 router = APIRouter(prefix="/features", tags=["Features"])
+
+_spot_provider = BinancePublicMarketDataProvider()
+_derivatives_provider = BinancePublicFuturesDataProvider()
 
 
 class ComputeFeaturePayload(BaseModel):
@@ -68,3 +77,47 @@ async def get_latest_snapshot(
     )
     snapshot = feature_pipeline.compute(req, candles)
     return snapshot.model_dump(mode="json")
+
+
+@router.get("/derivatives/definitions")
+async def get_derivatives_feature_definitions() -> List[Dict[str, Any]]:
+    defs = derivatives_feature_registry.list_definitions()
+    return [
+        {
+            "name": d.name,
+            "version": d.version,
+            "category": d.category,
+            "description": d.description,
+            "required_lookback": d.required_lookback,
+            "output_type": d.output_type,
+            "missing_policy": d.missing_policy,
+        }
+        for d in defs
+    ]
+
+
+@router.get("/derivatives/snapshots/latest")
+async def get_latest_derivatives_snapshot(symbol: str = Query("BTC/USDT")) -> Dict[str, Any]:
+    """Live derivatives feature snapshot (funding-rate Z-score, open-interest ROC, futures-basis
+    momentum) computed from the real, forward-accumulating snapshot history in
+    `packages.market_data.derivatives_history`. Every call fetches a real snapshot, appends it
+    to history (subject to the cache's own dedup interval), then computes features from
+    whatever real history exists as of now -- honestly `WARMING_UP` until enough polls have
+    landed, never a fabricated value."""
+    now = datetime.now(timezone.utc)
+    spot_reference_price: Optional[Decimal] = None
+    try:
+        prices = await _spot_provider.fetch_current_prices([symbol])
+        spot_reference_price = prices.get(symbol)
+    except Exception:  # noqa: BLE001 - basis just stays null; the snapshot is still usable
+        spot_reference_price = None
+
+    snapshot = await _derivatives_provider.fetch_snapshot(symbol, spot_reference_price=spot_reference_price)
+    derivatives_history.append_snapshot(snapshot)
+    history = derivatives_history.load_history(symbol, as_of=now)
+
+    req = DerivativesFeatureComputationRequest(
+        exchange=snapshot.exchange, symbol=symbol, feature_set="derivatives_v1", as_of_time=now,
+    )
+    feature_snapshot = derivatives_feature_pipeline.compute(req, history)
+    return feature_snapshot.model_dump(mode="json")

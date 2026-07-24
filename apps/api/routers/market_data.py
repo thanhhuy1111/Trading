@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from packages.common.config import settings
 from packages.features.models import FeatureComputationRequest
 from packages.features.pipeline import feature_pipeline
+from packages.market_data import derivatives_history
 from packages.market_data.adapters.binance import BinancePublicMarketDataProvider
 from packages.market_data.adapters.binance_futures import BinancePublicFuturesDataProvider
 from packages.market_data.derivatives_models import DerivativesSnapshot
@@ -123,6 +124,7 @@ async def get_derivatives_snapshot(symbol: str) -> Dict[str, Any]:
 
     snapshot = await _futures_provider.fetch_snapshot(symbol, spot_reference_price=spot_reference_price)
     _derivatives_cache[symbol] = (now, snapshot)
+    derivatives_history.append_snapshot(snapshot)
     return _derivatives_snapshot_to_dict(snapshot)
 
 
