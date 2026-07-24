@@ -11,13 +11,13 @@ export default defineConfig({
       // unchanged. Must be registered before the general '/api' rule below since it's a
       // more specific prefix of it.
       '/api/v1': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       // Every other router (recommendations, trading, portfolio, ...) is mounted with no
       // prefix of its own, so /api/xxx must have the /api stripped before reaching it.
       '/api': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
