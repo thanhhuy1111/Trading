@@ -61,7 +61,7 @@ export default function App() {
         }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body?.message || 'Analysis request failed');
+      if (!response.ok) throw new Error(body?.message || body?.detail || 'Analysis request failed');
       if (activeAnalysisRequest.current === requestVersion) {
         setAnalysis(body);
       }
@@ -189,6 +189,24 @@ export default function App() {
                         {agent.heuristic_score ? (
                           <div>heuristic score: {String(agent.heuristic_score)}</div>
                         ) : null}
+                        {agent.view ? <div className="mt-1 text-slate-300">{String(agent.view)}</div> : null}
+                        {agent.risk_level ? <div>risk level: {String(agent.risk_level)}</div> : null}
+                        {Array.isArray(agent.source_ids) && agent.source_ids.length ? (
+                          <div className="mt-1 space-y-1">
+                            <div>grounded sources: {agent.source_ids.length}</div>
+                            {agent.source_ids.map((source) => (
+                              <a
+                                key={String(source)}
+                                href={String(source)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block truncate text-cyan-400 hover:text-cyan-300"
+                              >
+                                {String(source)}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
                         <div>{Array.isArray(agent.reason_codes) ? agent.reason_codes.join(', ') : ''}</div>
                       </li>
                     ))}
@@ -227,6 +245,11 @@ export default function App() {
                 <p className="mt-2 text-xs text-slate-500">
                   {systemHealth ? `Runtime: ${String(systemHealth.analysis_runtime ?? 'unknown')}` : 'Health unavailable'}
                 </p>
+                {systemHealth && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    LLM specialists: {String(systemHealth.llm_specialist_runtime ?? 'unknown')}
+                  </p>
+                )}
               </section>
             </div>
           </section>

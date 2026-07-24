@@ -16,6 +16,9 @@ class GeminiSettings(BaseSettings):
     GEMINI_ENABLE_GOOGLE_SEARCH: bool = False
     GEMINI_REQUEST_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=300)
     GEMINI_MAX_RETRIES: int = Field(default=2, ge=0, le=5)
+    GEMINI_CONTEXT_ENABLED: bool = True
+    GEMINI_CONTEXT_MAX_RETRIES: int = Field(default=0, ge=0, le=2)
+    GEMINI_CONTEXT_MAX_SOURCES: int = Field(default=8, ge=1, le=20)
 
     @property
     def is_configured(self) -> bool:
@@ -36,6 +39,7 @@ class OrchestratorSettings(BaseSettings):
     # Coarse, process-global rate limits (no per-user identity exists in this system yet).
     CHAT_RATE_LIMIT_PER_MINUTE: int = 30
     RECOMMENDATION_SCAN_RATE_LIMIT_PER_MINUTE: int = 60
+    ANALYSIS_RATE_LIMIT_PER_MINUTE: int = 5
 
 
 gemini_settings = GeminiSettings()

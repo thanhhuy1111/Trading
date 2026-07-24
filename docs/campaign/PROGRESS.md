@@ -808,6 +808,41 @@ Status: **COMPLETE**
 - No live trading, private exchange API, approval-gate change, fabricated model result or order
   path was introduced.
 
+## Post-campaign activation — Grounded multi-LLM context and debate
+
+Status: **IMPLEMENTED; LIVE PROVIDER BLOCKED BY CURRENT KEY QUOTA**
+
+### Delivered
+
+- Added four independent Gemini specialist calls: News, Macro, Sentiment and Risk Critic.
+- Each specialist uses strict structured output plus Gemini Google Search grounding. Source
+  IDs are admitted only from SDK `url_citation` metadata; missing citations fail closed.
+- Added one bounded Bull and one bounded Bear debate call over the independently grounded
+  assessments. Debate can cite only previously admitted source IDs and cannot introduce
+  numeric claims.
+- Added code-only context/source verification, explicit separation from trade Verification,
+  and zero-exposure Risk output. An available context layer cannot create approved
+  quantitative evidence or execution authority.
+- Added a five-analysis-per-minute paid-call guard, zero context retries by default, source
+  count bounds and dashboard rendering for specialist views/citations.
+- Fixed the local Vite proxy to use the backend's explicit IPv4 loopback address, removing the
+  dashboard's false `API unavailable` state on hosts where `localhost` resolves to IPv6.
+- Official Gemini documentation confirms Gemini 3 models support structured output combined
+  with built-in Google Search tools:
+  <https://ai.google.dev/gemini-api/docs/structured-output>.
+
+### Verification
+
+- Focused multi-LLM/runtime/API tests: 16 passed.
+- Full Python virtualenv suite: 646 passed, 12 skipped, 0 failed.
+- Dashboard: 8 tests passed and production build passed.
+- Real health reports the specialist runtime as `CONFIGURED`.
+- A real four-specialist call with the supplied key returned provider `429 quota exceeded`.
+  All four agents therefore reported `LLM_PROVIDER_RATE_LIMITED`; Debate did not run,
+  Verification rejected the incomplete set, and Risk approved zero exposure. No result was
+  fabricated or relabeled as available.
+- A key/project with available Gemini quota is required for live specialist/debate acceptance.
+
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).

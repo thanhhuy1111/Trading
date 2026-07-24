@@ -15,14 +15,19 @@
   result. Rule scores are labeled `HEURISTIC_SCORE`, target-distance output is labeled
   `TARGET_DISTANCE_HEURISTIC_PROXY`, and neither is presented as calibrated probability or
   expected return.
-- Quantitative and LLM specialist runtimes remain explicitly unbound/unconfigured. Debate and
-  specialist Verification are not run, and Risk always returns zero exposure with
+- Quantitative trade-specialist runtime remains explicitly unbound. The post-campaign public
+  activation can run four independently prompted, Google-Search-grounded Gemini context
+  specialists plus a bounded Bull/Bear debate when configuration and quota are available.
+  Code-only context verification runs, but trade Verification remains rejected without the
+  approved Quantitative/Derivatives/Technical set. Risk always returns zero exposure with
   `RESEARCH_ONLY_NO_EXECUTION_AUTHORITY`.
 - Bounded, locked and idempotent in-process store with in-flight request deduplication,
   immutable scope fingerprints and 409 rejection on request-id reuse across scopes.
 - Restricted local dashboard CORS with no credentials and narrow methods/headers.
 - Dashboard run action with loading/error/empty/available/unavailable states and inspectable
   Agent, Debate, Evidence, Verification/Risk, Prediction History and System Health panels.
+- Agent Inspector shows each grounded LLM's view, risk label and clickable citation URLs;
+  system health distinguishes configured local wiring from runtime call success.
 - BTC/ETH and timeframe controls are wired into analysis; scope changes abort/ignore stale
   responses and clear old analysis. Forming candles are excluded from the displayed closed
   candle series.
@@ -50,5 +55,5 @@
   timeframe strip.
 
 No secrets are returned. No live trading, private API or real-order endpoint was introduced.
-This is a deterministic research surface, not the full Phase 6–9 model/LLM authority chain.
-The UI never presents the result as an approved prediction or execution authorization.
+This remains a research surface, not an approved Phase 6–9 trade authority chain. The UI never
+presents context verification as an approved prediction or execution authorization.

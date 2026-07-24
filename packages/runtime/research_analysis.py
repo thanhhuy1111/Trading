@@ -30,6 +30,7 @@ from packages.market_data.historical_quality import (
 )
 from packages.market_data.models import Candle, Timeframe
 from packages.retraining.xgboost_contracts import PRICE_FEATURE_NAMES
+from packages.runtime.llm_research import PublicLLMResearchRuntime
 
 PublicCandlesFetcher = Callable[
     [str, Timeframe, datetime, datetime, int],
@@ -79,14 +80,22 @@ class PublicResearchAnalysisRuntime:
         self,
         fetch_candles: PublicCandlesFetcher | None = None,
         clock: Clock | None = None,
+        llm_runtime: PublicLLMResearchRuntime | None = None,
     ) -> None:
         provider = BinancePublicMarketDataProvider()
         self._fetch_candles = fetch_candles or provider.fetch_candles
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._llm_runtime = (
+            llm_runtime or PublicLLMResearchRuntime.from_environment()
+        )
 
     @property
     def supported_symbols(self) -> frozenset[str]:
         return _SUPPORTED_SYMBOLS
+
+    @property
+    def llm_specialists_configured(self) -> bool:
+        return self._llm_runtime.configured
 
     async def analyze(
         self,
@@ -242,15 +251,10 @@ class PublicResearchAnalysisRuntime:
                     "status": "UNAVAILABLE",
                     "reason_codes": ["QUANTITATIVE_RUNTIME_NOT_BOUND"],
                 },
-                {
-                    "agent_name": "llm_specialists",
-                    "status": "UNAVAILABLE",
-                    "reason_codes": ["LLM_SPECIALIST_RUNTIME_NOT_CONFIGURED"],
-                },
             )
         )
 
-        evidence = tuple(
+        technical_evidence = tuple(
             _feature_evidence(
                 analysis_id=analysis_id,
                 name=name,
@@ -263,6 +267,13 @@ class PublicResearchAnalysisRuntime:
             for name in PRICE_FEATURE_NAMES
             if snapshot.values[name] is not None
         )
+        llm_result = await self._llm_runtime.analyze(
+            analysis_id=analysis_id,
+            symbol=symbol,
+            analysis_time=requested_at,
+        )
+        agents.extend(llm_result.agents)
+        evidence = (*technical_evidence, *llm_result.evidence)
 
         has_trade_intent = decision.trade_intent is not None
         recommendation = "RESEARCH_LONG" if has_trade_intent else "NO_DECISION"
@@ -270,33 +281,30 @@ class PublicResearchAnalysisRuntime:
             "RESEARCH_ONLY",
             *routing.reason_codes,
             *decision.allocation.reason_codes,
-        )
-        verification_reason = (
-            "RESEARCH_SIGNAL_SPECIALIST_VERIFICATION_NOT_RUN"
-            if has_trade_intent
-            else "NO_TRADE_INTENT"
+            *(
+                ("GROUNDED_LLM_CONTEXT_AVAILABLE",)
+                if llm_result.status == "AVAILABLE"
+                else ()
+            ),
         )
         return ResearchAnalysisResult(
             status="AVAILABLE",
             recommendation=recommendation,
             reason_codes=tuple(dict.fromkeys(reason_codes)),
-            as_of_time=source_available_at,
+            as_of_time=(
+                llm_result.as_of_time
+                if llm_result.status in {"AVAILABLE", "PARTIAL"}
+                else source_available_at
+            ),
             agents=tuple(agents),
             evidence=evidence,
-            debate={
-                "status": "NOT_RUN",
-                "reason_codes": ["LLM_SPECIALIST_RUNTIME_NOT_CONFIGURED"],
-                "turns": [],
-            },
-            verification={
-                "decision": "NOT_RUN",
-                "reason_codes": [verification_reason],
-            },
+            debate=llm_result.debate,
+            verification=llm_result.verification,
             risk={
                 "allow_trade": False,
                 "approved_quantity": "0",
                 "approved_notional": "0",
-                "reason_codes": ["RESEARCH_ONLY_NO_EXECUTION_AUTHORITY"],
+                "reason_codes": list(llm_result.risk_reason_codes),
             },
         )
 

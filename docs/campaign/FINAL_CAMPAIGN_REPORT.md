@@ -33,7 +33,9 @@ is `8153201`. No campaign branch or pull request was created.
 No architecture phase is partially implemented against its safe acceptance path. The
 following empirical/operator capabilities are intentionally incomplete:
 
-- real News, On-chain, Macro, Sentiment and Market Regime providers are not configured;
+- the public Gemini News, Macro, Sentiment and Risk Critic runtime is implemented and
+  configured, but the currently supplied key/project is quota-blocked; On-chain remains
+  without a real provider;
 - ETH research model binding remains disabled without an asset-specific model;
 - the end-to-end thesis collection adapter is blocked and `collection_may_start=false`;
 - the 12 disposable-PostgreSQL paper durability tests remain skipped without
@@ -173,13 +175,37 @@ closed public Binance spot candles for registered BTC/USDT and ETH/USDT scopes. 
 point-in-time features, regime/routed rule-agent output and 13 source-bound technical evidence
 records. A completed computation may return `NO_DECISION`; this is not converted into a trade.
 
-Quantitative model execution and LLM specialists are not bound to this surface, their approval
-state is not inferred, debate/specialist Verification are not run, and Risk always denies
-execution authority with zero exposure. Gemini chat remains disabled until both local
-configuration values are present.
+At that checkpoint, quantitative model execution and LLM specialists were not bound to this
+surface, their approval state was not inferred, debate/specialist Verification did not run,
+and Risk always denied execution authority with zero exposure.
 
 Current checkpoint verification is 635 Python tests passed with 12 explicit PostgreSQL skips,
 8 dashboard tests passed, Ruff clean, lockfile valid, production build passed and dependency
 audit at 0 vulnerabilities. Real browser checks completed for BTC/USDT 4h and ETH/USDT 1h;
 both returned `AVAILABLE`, `NO_DECISION` and 13 observed evidence records. These observations
 are functional evidence only and make no claim of alpha, model approval or trading readiness.
+
+## 17. Post-campaign grounded multi-LLM checkpoint
+
+The public analysis surface now runs four independently prompted Gemini specialist calls:
+News, Macro, Sentiment and Risk Critic. Each call requires strict structured output and public
+Google Search citation metadata. Model-authored URLs, private/local URLs, uncited output,
+prompt-injection markers and execution instructions are rejected.
+
+When all four specialists are available, one bounded Bull and one bounded Bear call debate only
+the admitted evidence. Code verifies the specialist set and citation references. This context
+verification is separate from trade Verification: the existing quantitative/trade-specialist
+requirements are not weakened, Risk remains zero exposure, and no execution authority is
+created.
+
+The dashboard renders the specialist views, risk labels and grounded source URLs. Its local
+proxy now uses an explicit IPv4 loopback target so the UI can reach an IPv4-only backend on
+hosts where `localhost` resolves to IPv6.
+
+Current verification is 646 Python tests passed with 12 explicit PostgreSQL skips, 10/10
+campaign final-acceptance tests passed, 8 dashboard tests passed, Ruff clean and production
+build passed. A real browser run showed `llm_specialist_runtime=CONFIGURED` and all four named
+agents. The supplied key/project returned provider `429 quota exceeded`, so every specialist
+reported `LLM_PROVIDER_RATE_LIMITED`, Debate remained `NOT_RUN`, Verification rejected the
+incomplete set and Risk approved zero exposure. A quota-enabled key/project is required to
+observe live grounded outputs; no result was fabricated.

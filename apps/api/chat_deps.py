@@ -12,7 +12,7 @@ from typing import Deque, Dict
 
 from fastapi import HTTPException
 
-from packages.chat_agent.config import orchestrator_settings
+from packages.chat_agent.config import gemini_settings, orchestrator_settings
 
 
 class _SlidingWindowRateLimiter:
@@ -39,3 +39,20 @@ _rate_limiter = _SlidingWindowRateLimiter()
 async def enforce_chat_rate_limit() -> None:
     if not _rate_limiter.check("chat", orchestrator_settings.CHAT_RATE_LIMIT_PER_MINUTE):
         raise HTTPException(status_code=429, detail="Chat rate limit exceeded, please retry shortly")
+
+
+async def enforce_analysis_rate_limit() -> None:
+    """Bound paid multi-LLM analysis calls independently from conversational chat."""
+    if (
+        not gemini_settings.is_configured
+        or not gemini_settings.GEMINI_CONTEXT_ENABLED
+    ):
+        return
+    if not _rate_limiter.check(
+        "analysis",
+        orchestrator_settings.ANALYSIS_RATE_LIMIT_PER_MINUTE,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Analysis rate limit exceeded, please retry shortly",
+        )

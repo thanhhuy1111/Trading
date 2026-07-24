@@ -45,6 +45,14 @@ const analysis = {
       reason_codes: ['INSIDE_NEUTRAL_ZONE'],
     },
     { agent_name: 'quantitative_agent', status: 'UNAVAILABLE', reason_codes: ['QUANTITATIVE_RUNTIME_NOT_BOUND'] },
+    {
+      agent_name: 'news_agent',
+      status: 'AVAILABLE',
+      view: 'NEUTRAL: Grounded context',
+      risk_level: 'MEDIUM',
+      source_ids: ['https://example.com/source'],
+      reason_codes: ['GOOGLE_SEARCH_GROUNDED'],
+    },
   ],
   debate: { status: 'NOT_RUN', reason_codes: ['GEMINI_NOT_CONFIGURED'], turns: [] },
   evidence: [{ evidence_id: 'ui-test:technical:rsi_14', name: 'rsi_14', numeric_value: '50' }],
@@ -61,7 +69,7 @@ describe('campaign dashboard', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const body = url.includes('/system/health')
-        ? { analysis_runtime: 'RESEARCH_ONLY' }
+        ? { analysis_runtime: 'RESEARCH_ONLY', llm_specialist_runtime: 'CONFIGURED' }
         : url.includes('/predictions')
           ? { status: 'UNAVAILABLE', items: [] }
           : analysis;
@@ -85,6 +93,10 @@ describe('campaign dashboard', () => {
     await waitFor(() => expect(screen.getByText('regime_agent_v1')).toBeInTheDocument());
     expect(screen.getByText('reversion_agent_v1')).toBeInTheDocument();
     expect(screen.getByText('quantitative_agent')).toBeInTheDocument();
+    expect(screen.getByText('news_agent')).toBeInTheDocument();
+    expect(screen.getByText('NEUTRAL: Grounded context')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'https://example.com/source' })).toBeInTheDocument();
+    expect(screen.getByText(/LLM specialists: CONFIGURED/)).toBeInTheDocument();
     expect(screen.getByText(/"decision": "NOT_RUN"/)).toBeInTheDocument();
     expect(screen.getByText(/"allow_trade": false/)).toBeInTheDocument();
     expect(screen.getByText(/1 evidence records/)).toBeInTheDocument();
@@ -115,7 +127,7 @@ describe('campaign dashboard', () => {
         });
       }
       const body = url.includes('/system/health')
-        ? { analysis_runtime: 'RESEARCH_ONLY' }
+        ? { analysis_runtime: 'RESEARCH_ONLY', llm_specialist_runtime: 'CONFIGURED' }
         : { status: 'UNAVAILABLE', items: [] };
       return Promise.resolve(new Response(JSON.stringify(body), {
         status: 200,

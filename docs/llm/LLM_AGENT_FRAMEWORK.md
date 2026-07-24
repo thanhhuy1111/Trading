@@ -1,9 +1,9 @@
 # LLM Agent Framework (Phase 9)
 
-`packages/llm/{framework,agents}.py`. Every concrete agent actually instantiated in this
-codebase is disabled - none calls a real LLM provider, and none claims to. This module is the
-fuller contract a real provider-backed agent implements later without any caller
-(`BaselineMarketContextService`, the recommendation runtime) changing.
+`packages/llm/{framework,agents,grounded_context,context_debate}.py`. The disabled baseline
+remains the default when Gemini is not configured. When `GEMINI_API_KEY`, `GEMINI_MODEL` and
+`GEMINI_CONTEXT_ENABLED=true` are present, the public research runtime instantiates four
+provider-backed logical specialists and a bounded two-sided debate.
 
 ## The 5 named interfaces (`packages/llm/agents.py`)
 
@@ -13,12 +13,28 @@ fuller contract a real provider-backed agent implements later without any caller
 structurally unable to emit its own probability/price/risk override since its signature only
 accepts and returns `MarketContextAssessment` lists.
 
-`packages.intelligence.market_context`'s Phase 4 no-op agents (`NoOpNewsAgent`, etc.) already
-satisfy these Protocols structurally and are left untouched - not duplicated, not replaced -
-per the preserve-existing-behavior rule. `packages/llm/agents.py` additionally provides
-`DisabledLLMAgent`-backed `NewsAgent`/`MacroAgent`/`SentimentAgent`/`RiskCriticAgent` classes
-for a caller that wants the richer `LLMAgentConfig` explicitly attached, and
-`PassThroughCoordinatorAgent`, the only coordinator implementation in this task.
+`packages.intelligence.market_context`'s Phase 4 no-op agents (`NoOpNewsAgent`, etc.) remain
+available for offline recommendation/runtime tests. The activated public analysis surface
+uses `GroundedGeminiContextAgent` instances named `news_agent`, `macro_agent`,
+`sentiment_agent` and `risk_critic_agent`. They share a configured Gemini model but execute
+independent calls, prompts and response validation.
+
+## Grounded provider runtime
+
+- Uses Gemini's Interactions API with the built-in `google_search` tool and strict JSON-schema
+  output.
+- Accepts source IDs only from `url_citation` annotations on model-output steps. URLs written
+  merely inside model JSON are never treated as provenance.
+- Requires at least one public HTTP(S) citation per available specialist.
+- Stores citation URL and retrieval time; it explicitly does not claim the retrieval timestamp
+  is the source's publication timestamp.
+- Labels confidence as an LLM heuristic, not a calibrated probability.
+- Forces `risk_adjustment=0`; context agents cannot alter portfolio or execution risk.
+- Uses zero retries by default and a five-analysis-per-minute process guard to bound paid calls.
+
+When all four grounded specialists succeed, `ContextDebateService` runs one independent Bull
+and one independent Bear structured-output call. Debate source IDs must be a subset of the
+already admitted specialist citations. Numeric claims in debate prose are rejected.
 
 ## `LLMAgentConfig`
 
@@ -32,9 +48,8 @@ listed).
 `BaseLLMAgent.assess()` wraps `_call_provider()` with timeout + bounded retry +
 `CircuitBreaker`, and always degrades to a `NOT_AVAILABLE` `MarketContextAssessment` on
 timeout or any provider exception - it never raises to the caller and never fabricates a view.
-`DisabledLLMAgent` (what every concrete agent in this task actually is) bypasses the
-retry/circuit-breaker machinery entirely and returns `NOT_AVAILABLE` immediately, since a
-provider that structurally does not exist has nothing to retry.
+`DisabledLLMAgent` bypasses retry/circuit-breaker machinery and returns `NOT_AVAILABLE`
+immediately. It remains the fail-closed behavior when configuration is absent.
 
 ## Defensive requirements (structural, not just documented convention)
 
@@ -52,8 +67,13 @@ provider that structurally does not exist has nothing to retry.
 - **No unbounded tool use.** `check_tool_allowed(config, tool_name)` - empty allowlist by
   default means no tool calls of any kind.
 
-## Runtime independence
+## Verification and runtime independence
 
 `packages.runtime.recommendation_service` never imports `packages.llm`'s provider clients, and
 the full pipeline is tested and works with every LLM agent disabled - see
 `tests/acceptance/test_final_acceptance.py` for the end-to-end demonstration.
+
+The public multi-LLM runtime performs code-only citation/set verification. Even when context
+and debate verify successfully, trade Verification remains `REJECTED` until the existing
+Technical + Derivatives + approved Quantitative specialist contract is satisfied. This
+activation does not loosen that gate and Risk continues to return zero exposure.

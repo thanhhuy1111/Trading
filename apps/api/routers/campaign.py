@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.api.chat_deps import enforce_analysis_rate_limit
 from packages.common.config import settings
 from packages.market_data.models import Timeframe
 from packages.runtime.research_analysis import (
@@ -124,7 +125,12 @@ def market_derivatives(symbol: str) -> dict[str, object]:
     }
 
 
-@router.post("/analysis/run", response_model=AnalysisView, status_code=202)
+@router.post(
+    "/analysis/run",
+    response_model=AnalysisView,
+    status_code=202,
+    dependencies=[Depends(enforce_analysis_rate_limit)],
+)
 async def run_analysis(
     request: AnalysisRunRequest,
     runtime: PublicResearchAnalysisRuntime = Depends(get_research_analysis_runtime),
@@ -259,15 +265,23 @@ def get_prediction(prediction_id: str) -> dict[str, object]:
 
 @router.get("/system/health")
 def system_health() -> dict[str, object]:
+    llm_configured = _RESEARCH_ANALYSIS_RUNTIME.llm_specialists_configured
     return {
         "status": "SAFE",
         "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
         "private_exchange_api_enabled": settings.PRIVATE_EXCHANGE_API_ENABLED,
         "analysis_runtime": "RESEARCH_ONLY",
+        "llm_specialist_runtime": (
+            "CONFIGURED" if llm_configured else "NOT_CONFIGURED"
+        ),
         "reason_codes": [
             "PUBLIC_MARKET_DATA_REQUIRED",
             "QUANTITATIVE_RUNTIME_NOT_BOUND",
-            "LLM_SPECIALIST_RUNTIME_NOT_CONFIGURED",
+            (
+                "LLM_SPECIALIST_RUNTIME_CONFIGURED"
+                if llm_configured
+                else "LLM_SPECIALIST_RUNTIME_NOT_CONFIGURED"
+            ),
         ],
     }
 
