@@ -4,8 +4,8 @@
 
 - Branch: `main`
 - Current phase: Phase 4 — XGBoost
-- Last completed task: 4B — Dataset & Labels
-- Next task: 4C — Training & Walk-forward
+- Last completed task: 4C — Training & Walk-forward
+- Next task: 4D — Approval & Artifact
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -95,7 +95,8 @@ finding HIGH/MEDIUM. Reviewer không sửa file.
 - Baseline bàn giao: 487 passed, 3 failed; Ruff clean; 180 mypy errors.
 - Root `.venv` không tồn tại lúc bắt đầu; Phase 4A đã tạo local gitignored `.venv`
   Python 3.12.12 từ `.[dev,research]` để verify.
-- XGBoost vẫn chưa được khai báo/cài; việc thêm dependency thuộc Phase 4C.
+- XGBoost 3.3.0 đã được cài trong `.venv`; research dependency được bound
+  `xgboost>=3.2.0,<4.0.0`.
 - Derivatives history không backfill tùy ý và chỉ giữ 30 ngày.
 
 ## Phase 4B — Dataset & Labels
@@ -162,14 +163,79 @@ not edit files.
 No trainer, model artifact, approval service, runtime serving, private exchange API, live
 trading flag, order path or fabricated market/research result was added.
 
+## Phase 4C — Training & Walk-forward
+
+Status: **COMPLETE**
+
+### Files changed
+
+- `pyproject.toml`
+- `packages/retraining/xgboost_training.py`
+- `tests/unit/test_xgboost_training.py`
+- campaign progress/quality/task docs.
+
+### Research and dependency decision
+
+- XGBoost official package metadata hiện yêu cầu Python `>=3.12` và có wheel macOS ARM;
+  `.venv` cài thực tế `xgboost==3.3.0`.
+- Research dependency được bound `xgboost>=3.2.0,<4.0.0`.
+- Native `.json` model IO vẫn là format cho Phase 4D; Phase 4C không ghi artifact.
+- Official references:
+  [XGBoost package](https://pypi.org/project/xgboost/),
+  [XGBoost model IO](https://xgboost.readthedocs.io/en/stable/tutorials/saving_model.html).
+
+### Delivered
+
+- Ba expanding walk-forward folds theo unique timestamp groups, one-bar purge và
+  `max(target_time) < next as_of_time`.
+- Train-only candidate-`k` selection, empirical-prior majority/seeded-random baselines,
+  train-only StandardScaler/Logistic và fixed deterministic CPU XGBoost.
+- Validation-only scalar temperature calibration; missing-class, constant/uniform logits,
+  invalid probabilities và third-party failures đều fail closed bằng machine reason codes.
+- Per-fold và aggregate accuracy, balanced accuracy, macro F1, MCC, log loss, multiclass
+  Brier, 10-bin ECE/reliability counts và 3x3 confusion matrix.
+- Full labels/probabilities, candidate distributions, partition checksums, calibration
+  evidence và mọi rejected fold được giữ trong report.
+- Final base fit trên purged prefix 0–90%; calibration chỉ trên disjoint trailing 90–100%;
+  model fit đúng một lần và không refit sau calibration.
+
+Synthetic fixtures chỉ kiểm contract/determinism/failure handling; không được diễn giải là
+evidence về hiệu quả trên thị trường thật và không tạo trạng thái approved.
+
+### Independent safety review
+
+Read-only reviewer phát hiện calibration degenerate vẫn được chấp nhận và free-form
+third-party exceptions lọt vào reason codes. Hai finding đã được sửa bằng
+`CALIBRATION_DEGENERATE` và stable fit/prediction reason codes. Final review không còn
+CRITICAL/HIGH/MEDIUM; reviewer không sửa file.
+
+### Verification
+
+- `.venv/bin/pytest tests/unit/test_xgboost_training.py -q` → 15 passed.
+- `.venv/bin/pytest tests/ -q` → 527 passed, 12 skipped, 1 failed.
+- Failure duy nhất vẫn là known baseline
+  `tests/integration/test_db_migration.py::test_alembic_migration_lifecycle` do thiếu
+  `infra/migrations/alembic.ini`.
+- `.venv/bin/ruff check .` → clean.
+- `.venv/bin/mypy packages/ apps/` → 180 errors in 67 files, unchanged baseline; không có
+  lỗi mới trong `xgboost_training.py`.
+- Safety flags vẫn `False/False/False`; `git diff --check` clean.
+
+### Scope confirmation
+
+Không tạo artifact, approval registry/service, runtime serving, private API, live trading,
+order path hoặc kết quả hiệu quả nghiên cứu giả.
+
 ### Next task
 
-Thực hiện Phase 4C — Training & Walk-forward theo
-`docs/campaign/tasks/PHASE_04_XGBOOST.md`. Không triển khai approval registry hoặc runtime
-serving trong 4C.
+Thực hiện Phase 4D — Approval & Artifact theo
+`docs/campaign/tasks/PHASE_04_XGBOOST.md`. Gate phải recompute từ immutable evidence và có thể
+kết thúc `REJECTED`; không approve để unblock runtime.
 
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).
+- Phase 4B implementation commit: `f740f1b`
+  (`feat: complete Phase 4B point-in-time dataset`).
 - Push status: pushed successfully to `origin/main` on 2026-07-24.
 - Pull request: not created, as required.

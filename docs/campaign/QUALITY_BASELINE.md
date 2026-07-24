@@ -74,3 +74,15 @@ Runtime settings được đọc trong Phase 4A cũng trả cả ba giá trị l
 
 Full-suite failure vẫn là missing `infra/migrations/alembic.ini`; không có regression mới.
 Ba runtime safety settings vẫn `False`.
+
+## Phase 4C verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| `tests/unit/test_xgboost_training.py` | 15 passed |
+| `.venv/bin/pytest tests/ -q` | 527 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files |
+
+Full-suite failure vẫn là missing `infra/migrations/alembic.ini`; không có regression mới.
+XGBoost 3.3.0 chạy trong Python 3.12 `.venv`; ba safety settings vẫn `False`.

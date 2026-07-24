@@ -40,6 +40,7 @@ dev = [
 ]
 research = [
     "scikit-learn>=1.4.0,<2.0.0",
+    "xgboost>=3.2.0,<4.0.0",
     "pyarrow>=15.0.0",
     "pyyaml>=6.0.0",
     "scipy>=1.11.0"

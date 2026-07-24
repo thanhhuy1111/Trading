@@ -4,12 +4,12 @@
 
 - 4A — Research & Design: **COMPLETE**
 - 4B — Dataset & Labels: **COMPLETE**
-- 4C — Training & Walk-forward: **NEXT**
-- 4D — Approval & Artifact: PENDING
+- 4C — Training & Walk-forward: **COMPLETE**
+- 4D — Approval & Artifact: **NEXT**
 - 4E — Runtime Serving & Final Verification: PENDING
 
-Phase 4B đã triển khai contract/dataset/label point-in-time và field-level derivatives
-lineage. Chưa có trainer, model artifact, approval state hay runtime serving.
+Phase 4C đã triển khai training/evaluation offline. Chưa tạo model artifact, approval state
+hay runtime serving.
 
 ## 1. Kết quả khảo sát
 
@@ -600,22 +600,22 @@ gộp các phase hoặc mở rộng scope âm thầm.
 
 ## 18. Acceptance criteria Phase 4C
 
-- [ ] Split theo unique timestamp groups trong đúng một dataset mode; ba expanding folds và
+- [x] Split theo unique timestamp groups trong đúng một dataset mode; ba expanding folds và
   one-bar purge thỏa no-overlap target interval.
-- [ ] Majority, seeded random, Logistic Regression và XGBoost đều chạy với fixed class order.
-- [ ] Baseline `predict`/`predict_proba` đúng semantics đã chốt và deterministic.
-- [ ] `k`, scaler, model và temperature calibration không đọc test data.
-- [ ] Final base model fit trên 0–90%, calibration fit disjoint 90–100%, chronology được
+- [x] Majority, seeded random, Logistic Regression và XGBoost đều chạy với fixed class order.
+- [x] Baseline `predict`/`predict_proba` đúng semantics đã chốt và deterministic.
+- [x] `k`, scaler, model và temperature calibration không đọc test data.
+- [x] Final base model fit trên 0–90%, calibration fit disjoint 90–100%, chronology được
   checksum và base model không refit sau calibration.
-- [ ] Mọi fold lưu đủ train/validation/test ranges, counts, class distributions, labels,
+- [x] Mọi fold lưu đủ train/validation/test ranges, counts, class distributions, labels,
   probabilities, metrics và reason codes; không bỏ fold kém.
-- [ ] Accuracy, balanced accuracy, macro F1, MCC, log loss, Brier, ECE và confusion matrix
+- [x] Accuracy, balanced accuracy, macro F1, MCC, log loss, Brier, ECE và confusion matrix
   được tính/validate.
-- [ ] Probability finite, bounded và sum-to-one; calibration failure safe reject.
-- [ ] Missing class/undersized fold/invalid probability có offline tests; seed reproducibility
+- [x] Probability finite, bounded và sum-to-one; calibration failure safe reject.
+- [x] Missing class/undersized fold/invalid probability có offline tests; seed reproducibility
   pass.
-- [ ] Không triển khai approval registry hoặc runtime serving trong 4C.
-- [ ] Targeted/full verification và progress update hoàn tất, safety flags không đổi.
+- [x] Không triển khai approval registry hoặc runtime serving trong 4C.
+- [x] Targeted/full verification và progress update hoàn tất, safety flags không đổi.
 
 ## 19. Acceptance criteria Phase 4D
 
