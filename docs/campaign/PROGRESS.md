@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 8 — Verification & Risk
-- Last completed task: Phase 7 — Bull–Bear Debate
-- Next task: Phase 8 — Verification & Risk
+- Current phase: Phase 9 — Manager Agent
+- Last completed task: Phase 8 — Verification & Risk
+- Next task: Phase 9 — Manager Agent
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -473,6 +473,37 @@ review reported none remaining.
 
 Phase 8 — deterministic verification authority and code-based risk engine with independent
 blocking decisions.
+
+## Phase 8 — Verification & Risk
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Verification requires the exact three-specialist set and complete debate, re-resolves every
+  evidence ID/time/status/category and re-matches every numeric claim.
+- Confidence and volatility come only from verified quantitative/technical evidence.
+- Risk Engine is code-only and binds analysis/time before conservative RR, position sizing,
+  volatility, drawdown and exposure gates.
+- Verification and Risk each independently veto; rejected results approve zero exposure.
+- LONG-only schema keeps SHORT unavailable until dedicated safety/accounting coverage exists.
+
+### Independent safety review
+
+Review found unchecked debate references, incomplete specialist sets, caller-controlled
+confidence/volatility, timestamp replay, inconsistent slippage RR, naive-time crash and
+implicit short geometry. All HIGH/MEDIUM findings were fixed and regression-tested; final
+review reported none remaining.
+
+### Verification
+
+- Focused verification/risk suites: 24 passed.
+- Full pytest: 569 passed, 12 skipped, 1 known Alembic failure.
+- Ruff/diff clean; mypy remains the 180-error baseline; safety flags are unchanged.
+
+### Next task
+
+Phase 9 — deterministic Manager gating and strict schema synthesis.
 
 ### Commit and push
 

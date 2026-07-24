@@ -149,3 +149,15 @@ persistent, Gemini call thật, private exchange API, order path hoặc live-tra
 
 Full-suite failure vẫn là known missing Alembic config. Debate providers are deterministic
 test doubles; no network, private API, order path or live-trading change.
+
+## Phase 8 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Verification + existing governor focused tests | 24 passed |
+| `.venv/bin/pytest tests/ -q` | 569 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files (baseline) |
+
+The one full-suite failure remains missing Alembic config. All risk calculations are
+deterministic code and inputs controlling confidence/volatility are evidence-bound.
