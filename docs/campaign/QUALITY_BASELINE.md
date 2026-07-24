@@ -235,3 +235,19 @@ private API or live-trading behavior was created.
 
 All provider tests use deterministic test doubles. Real advanced data is not configured and
 remains safe-unavailable; no research result or source evidence was fabricated.
+
+## Phase 15 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| `tests/unit/test_thesis_package.py` | 16 passed |
+| `.venv/bin/pytest tests/ -q` | 621 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| Targeted mypy | clean |
+| `.venv/bin/mypy packages/ apps/` | 202 errors in 71 files |
+| `uv lock --check` | passed |
+
+The single pytest failure is still the known missing `infra/migrations/alembic.ini`. Phase 15
+adds documentation, a locked machine-readable protocol, validator/schedule/identity helpers,
+contract tests and a dependency lock. Every uncollected comparative result remains
+`PENDING_EVIDENCE`.

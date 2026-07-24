@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 15 — Research & Thesis Package
-- Last completed task: Phase 14 — Advanced Expansion
-- Next task: Phase 15 — Research & Thesis Package
+- Current phase: Campaign-level final acceptance
+- Last completed task: Phase 15 — Research & Thesis Package
+- Next task: Campaign-level final acceptance and final report
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -695,6 +695,42 @@ not edit files.
 
 Phase 15 — thesis-ready structure and reproducibility protocol with every unavailable result
 marked `PENDING_EVIDENCE`.
+
+## Phase 15 — Research & Thesis Package
+
+Status: **COMPLETE AS THESIS-READY STRUCTURE; RESULTS PENDING EVIDENCE**
+
+### Evidence decision
+
+Real historical backtest artifacts exist, but there is no complete time-matured end-to-end
+cohort for all required multi-agent ablations. They were not substituted for missing thesis
+evidence.
+
+### Delivered
+
+- Thesis structure containing all required sections.
+- Point-in-time paired methodology, pre-registration protocol and cohort acceptance gate.
+- All ten required ablations with explicit `PENDING_EVIDENCE` results.
+- Thesis data dictionary and reproducibility/publication checklist.
+- Checked Python dependency lockfile.
+
+### Independent safety review
+
+Final independent read-only review found no remaining Critical, High, or Medium issue after
+the identity, contrast, temporal and durability fixes. Reviewer did not edit files.
+
+### Verification
+
+- Thesis package tests: 16 passed.
+- Full suite: 621 passed, 12 skipped, 1 known missing-Alembic-config failure.
+- Full Ruff and targeted mypy clean.
+- Full mypy: 202 errors in 71 files, tracked as existing/campaign-wide debt.
+- Protocol collection remains blocked on a reviewed research-only ablation adapter.
+- Live/private flags remain false; results remain `PENDING_EVIDENCE`.
+
+### Next task
+
+Campaign-level final acceptance and `docs/campaign/FINAL_CAMPAIGN_REPORT.md`.
 
 ### Commit and push
 

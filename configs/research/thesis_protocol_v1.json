@@ -1,0 +1,154 @@
+{
+  "schema_version": "thesis_protocol_v1",
+  "protocol_id": "btc_4h_multiagent_ablation_2026_2027",
+  "status": "PREREGISTERED_NOT_STARTED",
+  "scope": {
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "timezone": "UTC",
+    "collection_start": "2026-08-01T00:00:00+00:00",
+    "collection_end_exclusive": "2027-08-01T00:00:00+00:00",
+    "decision_cadence_hours": 4,
+    "decision_minutes": [0],
+    "outcome_horizons": ["4h"],
+    "price_source": "Binance public spot klines through packages.market_data.adapters.binance.BinancePublicMarketDataProvider",
+    "reference_price": "Decimal close of BTCUSDT candle [as_of_time-4h,as_of_time), final before extraction",
+    "outcome_price": "Decimal close of BTCUSDT candle [as_of_time,as_of_time+4h), final before extraction",
+    "return_formula": "(outcome_close-reference_close)/reference_close using Decimal without float conversion",
+    "direction_rule": "positive return=BULLISH; negative return=BEARISH; exactly zero=FLAT with zero tolerance",
+    "late_revision_policy": "retain_original_availability_and_exclude_if_first_received_after_as_of"
+  },
+  "folds": [
+    {"fold_id": "F1", "start": "2026-08-01T00:00:00+00:00", "end_exclusive": "2026-10-01T00:00:00+00:00"},
+    {"fold_id": "F2", "start": "2026-10-01T00:00:00+00:00", "end_exclusive": "2026-12-01T00:00:00+00:00"},
+    {"fold_id": "F3", "start": "2026-12-01T00:00:00+00:00", "end_exclusive": "2027-02-01T00:00:00+00:00"},
+    {"fold_id": "F4", "start": "2027-02-01T00:00:00+00:00", "end_exclusive": "2027-04-01T00:00:00+00:00"},
+    {"fold_id": "F5", "start": "2027-04-01T00:00:00+00:00", "end_exclusive": "2027-06-01T00:00:00+00:00"},
+    {"fold_id": "F6", "start": "2027-06-01T00:00:00+00:00", "end_exclusive": "2027-08-01T00:00:00+00:00"}
+  ],
+  "temporal_policy": {
+    "as_of_semantics": "scheduled UTC instant after the corresponding 4h candle is final",
+    "input_rule": "observed_at<=available_at<=received_at<=as_of_time",
+    "outcome_maturity": "outcome_available_at>=as_of_time+4h",
+    "purge_hours": 4,
+    "embargo_hours": 4,
+    "same_snapshot_fields": ["symbol", "timeframe", "as_of_time", "raw_inputs_checksum", "evidence_snapshot_checksum"],
+    "training_policy": "no model/prompt/threshold fitting on collection-window outcomes; only the predeclared research-only dynamic-weight rule may use strictly prior matured outcomes"
+  },
+  "model_selection": {
+    "rule": "latest exact BTCUSDT/4h registry entry with APPROVED entry and approval receipt before collection_start",
+    "tie_break": "lexicographically smallest model_id then model_version",
+    "lock_fields": ["model_id", "model_version", "artifact_sha256", "feature_schema_version", "approval_receipt_id"],
+    "missing_behavior": "NO_APPROVED_MODEL"
+  },
+  "components": {
+    "technical_agent": {"import_path": "packages.agents.specialists.TechnicalSpecialistAgent", "agent_version": "1.0.0", "prompt_name": "technical_interpretation", "prompt_version": "1.0.0"},
+    "derivatives_agent": {"import_path": "packages.agents.specialists.DerivativesSpecialistAgent", "agent_version": "1.0.0", "prompt_name": "derivatives_interpretation", "prompt_version": "1.0.0"},
+    "quantitative_agent": {"import_path": "packages.agents.specialists.QuantitativeSpecialistAgent", "agent_version": "1.0.0", "prompt_name": null, "prompt_version": null},
+    "debate": {"import_path": "packages.agents.debate.BullBearDebateOrchestrator", "version": "1.0.0", "bull_prompt_version": "1.0.0", "bear_prompt_version": "1.0.0", "max_rounds": 1},
+    "verification": {"import_path": "packages.agents.verification_risk.VerificationAgent", "version": "1.0.0"},
+    "risk": {"import_path": "packages.agents.verification_risk.AnalysisRiskEngine", "version": "1.0.0"},
+    "manager": {"import_path": "packages.agents.manager.ManagerAgent", "version": "1.0.0"},
+    "research_decision_function": {"import_path": "packages.experiments.thesis_protocol.ResearchAblationDecisionFunction", "version": "1.0.0", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    "derivatives_fields": ["funding_rate", "open_interest", "funding_rate_zscore_20", "open_interest_roc_12"],
+    "quantitative_only_weights": {"quantitative_agent": "1.0"},
+    "single_agent_weights": {"quantitative_agent": "0.5", "technical_agent": "0.5"},
+    "static_weights": {"technical_agent": "0.333333333333333333", "derivatives_agent": "0.333333333333333333", "quantitative_agent": "0.333333333333333334"},
+    "static_without_derivatives_weights": {"technical_agent": "0.5", "quantitative_agent": "0.5"},
+    "dynamic_weight_rule": {
+      "history_days": 180,
+      "minimum_matured_per_agent": 30,
+      "source_variant": "static_weights",
+      "source_records": "one conflict-free agent assessment per paired_analysis_id from thesis_experiment_identity_v1 envelopes",
+      "agent_score": "BULLISH:+1 when 4h public return>0,-1 when return<0,0 when flat; BEARISH:+1 when return<0,-1 when return>0,0 when flat; NEUTRAL/UNAVAILABLE/REJECTED:0",
+      "window": "[as_of_time-180 calendar days,as_of_time), ordered by source as_of_time then paired_analysis_id",
+      "maturity_cutoff": "include only outcomes with outcome_available_at<as_of_time; boundary equality is excluded",
+      "duplicate_policy": "same paired_analysis_id and agent must be byte-identical or the proposal is UNAVAILABLE",
+      "collection_window_use": "permitted only for strictly prior matured outcomes under this frozen research-only rule; no model/prompt/threshold update",
+      "raw_weight": "clamp(1+Decimal mean(per-agent score),0.25,1.75)",
+      "normalization": "raw_weight/sum(raw_weights)",
+      "insufficient_behavior": "UNAVAILABLE",
+      "authority": "RESEARCH_ONLY"
+    },
+    "decision_extraction": {
+      "common_function": "every arm uses ResearchAblationDecisionFunction; production VerificationAgent, AnalysisRiskEngine and ManagerAgent are observed artifacts only and never determine the primary endpoint",
+      "base_score": "sum configured component weight times BULLISH:+1, NEUTRAL:0, BEARISH:-1; required unavailable=>UNAVAILABLE",
+      "debate_layer": "when enabled replace base score with (base_score+debate_score)/2; otherwise use base_score unchanged",
+      "verification_layer": "when enabled a false research evidence-verification mask=>REJECTED; otherwise preserve the same candidate",
+      "weight_layer": "static or predeclared dynamic weights enter only the common base-score formula",
+      "output": "final score>0=>BUY; final score<=0=>HOLD",
+      "safety": "SELL and SHORT are disabled for every variant"
+    }
+  },
+  "variants": [
+    {"variant_id": "quantitative_only", "agents": [], "debate": false, "verification": true, "derivatives": false, "weighting": "QUANTITATIVE_ONLY", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "single_agent", "agents": ["technical_agent"], "debate": false, "verification": true, "derivatives": false, "weighting": "SINGLE_PLUS_QUANTITATIVE_BASE", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "multi_no_debate", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": false, "verification": true, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "multi_with_debate", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "without_verification", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": false, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "with_verification", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "without_derivatives", "agents": ["technical_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": false, "weighting": "STATIC_RENORMALIZED_EQUAL", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "with_derivatives", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "static_weights", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": true, "weighting": "STATIC", "authority": "RESEARCH_ONLY_NO_ACTION"},
+    {"variant_id": "dynamic_weights_research_only", "agents": ["technical_agent", "derivatives_agent", "quantitative_agent"], "debate": true, "verification": true, "derivatives": true, "weighting": "DYNAMIC_RESEARCH_ONLY", "authority": "RESEARCH_ONLY_NO_ACTION"}
+  ],
+  "contrasts": [
+    {"contrast_id": "C1_AGENT_INCREMENT", "control": "quantitative_only", "treatment": "single_agent", "changed_component": "technical_agent", "changed_fields": ["agents", "weighting"]},
+    {"contrast_id": "C2_DEBATE_INCREMENT", "control": "multi_no_debate", "treatment": "multi_with_debate", "changed_component": "debate", "changed_fields": ["debate"]},
+    {"contrast_id": "C3_VERIFICATION_INCREMENT", "control": "without_verification", "treatment": "with_verification", "changed_component": "verification_mask", "changed_fields": ["verification"]},
+    {"contrast_id": "C4_DERIVATIVES_INCREMENT", "control": "without_derivatives", "treatment": "with_derivatives", "changed_component": "derivatives_agent_and_fields", "changed_fields": ["agents", "derivatives", "weighting"]},
+    {"contrast_id": "C5_DYNAMIC_WEIGHT_INCREMENT", "control": "static_weights", "treatment": "dynamic_weights_research_only", "changed_component": "weighting_rule", "changed_fields": ["weighting"]}
+  ],
+  "analysis": {
+    "primary_endpoint": {
+      "name": "all_attempt_directional_score",
+      "population": "all scheduled attempts with a matured public close outcome",
+      "formula": "BUY:+1 if Decimal return>0 else -1 if return<0 else 0; HOLD/NO_DECISION/UNAVAILABLE/REJECTED/runtime_failure:0; SELL is invalid",
+      "contrast_estimand": "mean(treatment_score-control_score) over the same scheduled attempts"
+    },
+    "secondary_endpoints": {
+      "publication_class": "EXPLORATORY_ONLY",
+      "decision_rate": "count(BUY)/count(all scheduled attempts with public outcome), unit=ratio",
+      "conditional_directional_accuracy": "count(correct BUY)/count(BUY with public outcome), unit=ratio, null when denominator zero",
+      "simulated_net_return": "sum((paper_exit_equity-paper_entry_equity-fees-slippage)/paper_entry_equity), unit=ratio, paper records only, null without completed paper fills",
+      "simulated_max_drawdown": "max((running_peak_equity-current_equity)/running_peak_equity), unit=ratio, paper equity path only, null without path",
+      "unavailable_rate": "count(UNAVAILABLE)/count(all scheduled attempts), unit=ratio",
+      "rejection_rate": "count(REJECTED)/count(all scheduled attempts), unit=ratio",
+      "latency_ms": "median observed end-to-end latency over non-null values, unit=milliseconds, with denominator",
+      "observed_provider_cost": "sum non-null observed cost grouped by exact currency; never currency-convert, with denominator",
+      "publication_rule": "no confirmatory claim; any formula change requires a new protocol version"
+    },
+    "missing_policy": "variant-caused missing or failure scores zero in primary ITT; missing public outcome is a null slot retained in its original calendar block and excluded from the main mean denominator for every variant",
+    "sensitivity": ["for each missing public outcome set treatment=-1 and control=+1 in every primary contrast", "complete-case BUY decisions reported secondary only"],
+    "dependence": {
+      "block_unit": "42 fixed calendar slots anchored at collection_start; gaps remain null and the final block may be short",
+      "block_length_clocks": 42,
+      "main_denominator": "count non-null public-outcome slots; block sums ignore null slots without compressing time",
+      "bootstrap_null_rule": "sample whole fixed-slot blocks; retain nulls; compute each replicate mean over sampled non-null slots; redraw an all-null replicate",
+      "bootstrap_resamples": 10000,
+      "seed": 15042026
+    },
+    "inference": {
+      "statistic": "arithmetic mean of paired treatment_score-control_score",
+      "interval": "circular moving-block bootstrap: sample start indexes uniformly with replacement, take 42 clocks with wraparound, concatenate and truncate to N, two-sided 2.5/97.5 percentiles",
+      "test": "partition chronologically into non-overlapping 42-clock blocks anchored at collection_start, retain final short block, randomly flip each block-sum sign, statistic=absolute overall mean, two-sided p=(1+count(permuted>=observed))/(10000+1)",
+      "family": "five primary contrasts",
+      "multiplicity": "Holm step-down correction",
+      "alpha": "0.05"
+    },
+    "information_target": "census of every scheduled 4h decision in the fixed collection window",
+    "minimum_completeness": "at least 90% of scheduled clocks have public outcomes and all ten attempted variant records",
+    "stopping_rule": "no efficacy stopping; stop only at collection_end_exclusive or a documented safety/legal hard blocker"
+  },
+  "result_policy": {
+    "initial_status": "PENDING_EVIDENCE",
+    "paper_label": "SIMULATED_PAPER_ONLY",
+    "live_claim_allowed": false,
+    "promotion_allowed": false
+  },
+  "execution_readiness": {
+    "status": "BLOCKED_PENDING_RESEARCH_ABLATION_ADAPTER",
+    "required_adapter": "A future versioned adapter must materialize exact research-only omitted-stage semantics without instantiating production ManagerAgent for without_verification and must persist thesis_experiment_identity_v1 with protocol, variant, config, cohort and paired-analysis identity",
+    "collection_may_start": false
+  }
+}
