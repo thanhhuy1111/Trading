@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 12 — Paper Trading
-- Last completed task: Phase 11 — Shadow Trading
-- Next task: Phase 12 — Paper Trading
+- Current phase: Phase 13 — Experimental Data Collection
+- Last completed task: Phase 12 — Paper Trading
+- Next task: Phase 13 — Experimental Data Collection
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -599,6 +599,41 @@ concurrency/lineage gaps. All HIGH/MEDIUM findings were fixed; final review repo
 
 Phase 12 — validate deterministic paper accounting and irreversible live/private separation.
 
+## Phase 12 — Paper Trading
+
+Status: **COMPLETE**
+
+### Delivered
+
+- Retained the existing code-only risk sizing, session-isolated cash ledger, long-only
+  position accounting, protective stop/take-profit exits and public-data paper pipeline.
+- Deterministic paper order/fill identity and event-time execution with explicit fee/slippage.
+- End-to-end fill idempotency across ledger, position, PnL and history; rejected fills remain
+  retryable and terminal fills cannot be cancelled.
+- Immutable equity curve, trade history and portfolio metrics including NAV, return, fees,
+  realized/unrealized PnL, win rate and maximum drawdown.
+- Durable position protection/valuation persistence, deterministic storage IDs and replay
+  recovery; missing protection blocks recovery.
+
+### Independent safety review
+
+Final independent read-only review found no remaining CRITICAL/HIGH/MEDIUM issue after
+correctness fixes. Reviewer did not edit files.
+
+### Verification
+
+- Focused paper/position/durability tests: 41 passed, 12 skipped.
+- Full suite: 589 passed, 12 skipped, 1 known Alembic failure.
+- PostgreSQL durability drills remain 12 skipped without `PAPER_DB_TEST_URL`.
+- Ruff clean.
+- Targeted mypy shows only three known shared baseline errors; no Phase 12-specific error.
+- Diff clean; safety settings unchanged.
+
+### Next task
+
+Phase 13 — append-only experimental data capture, deterministic export and honest aggregate
+reporting.
+
 ### Commit and push
 
 - Phase 4A implementation commit: `4528293` (`docs: complete Phase 4A XGBoost design`).
@@ -606,5 +641,6 @@ Phase 12 — validate deterministic paper accounting and irreversible live/priva
   (`feat: complete Phase 4B point-in-time dataset`).
 - Phase 4C implementation commit: `217d6e7`
   (`feat: complete Phase 4C walk-forward training`).
+- Phase 12 commit is recorded after the checkpoint is created.
 - Push status: pushed successfully to `origin/main` on 2026-07-24.
 - Pull request: not created, as required.

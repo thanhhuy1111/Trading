@@ -46,6 +46,7 @@ class ExitProtector:
         candidate_trailing = new_high * (Decimal("1.0") - self.trailing_distance_pct)
         default_stop = position.average_entry_price * Decimal("0.95")
         active_stop = position.active_stop_price or position.initial_stop_price or default_stop
+        had_trailing_stop = position.trailing_stop_price is not None
         new_trailing_stop = max(position.trailing_stop_price or Decimal("0.0"), candidate_trailing, active_stop)
 
         # Update position's trailing stop
@@ -60,7 +61,7 @@ class ExitProtector:
 
         # 1. Stop-Loss Trigger (Fixed or Trailing)
         if current_market_price <= new_trailing_stop:
-            is_trail = position.trailing_stop_price is not None
+            is_trail = had_trailing_stop or current_market_price > active_stop
             trigger_type = ExitTriggerType.TRAILING_STOP if is_trail else ExitTriggerType.INITIAL_STOP
             trigger_price = new_trailing_stop
             logger.warning(

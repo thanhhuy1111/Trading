@@ -38,6 +38,16 @@ from packages.positions.ledger import PortfolioLedger  # noqa: E402
 from packages.positions.manager import PositionManager  # noqa: E402
 
 
+def _txn_ops(session, session_id, manager):
+    return SqlAlchemyFillTxnOps(
+        session,
+        session_id,
+        manager,
+        initial_stop_price=Decimal("40000"),
+        take_profit_price=Decimal("60000"),
+    )
+
+
 @pytest.fixture
 def db_url() -> str:
     return os.environ["PAPER_DB_TEST_URL"]
@@ -113,7 +123,7 @@ async def test_fill_transaction_is_atomic_and_rolls_back(session_factory):
     async with session_factory() as session:
         session_id = await _new_paper_session(session, Decimal("10000"))
         pm = PositionManager(account_id="ATOMIC_TEST", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
-        ops = SqlAlchemyFillTxnOps(session, session_id, pm)
+        ops = _txn_ops(session, session_id, pm)
         fill = _buy_fill("BTC/USDT", datetime.now(timezone.utc))
 
         async def _boom(*a, **k):
@@ -137,7 +147,7 @@ async def test_fill_retry_is_idempotent(session_factory):
     async with session_factory() as session:
         session_id = await _new_paper_session(session, Decimal("10000"))
         pm = PositionManager(account_id="IDEMP_TEST", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
-        ops = SqlAlchemyFillTxnOps(session, session_id, pm)
+        ops = _txn_ops(session, session_id, pm)
         fill = _buy_fill("BTC/USDT", datetime.now(timezone.utc))
         orch = FillCommitOrchestrator()
 
@@ -170,7 +180,7 @@ async def test_concurrent_fill_only_commits_once(session_factory):
     async def _commit_once():
         async with session_factory() as s:
             pm = PositionManager(account_id="RACE_TEST", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
-            ops = SqlAlchemyFillTxnOps(s, session_id, pm)
+            ops = _txn_ops(s, session_id, pm)
             return await orch.commit_fill(ops, fill)
 
     import asyncio
@@ -217,7 +227,7 @@ async def test_two_sessions_are_durably_isolated(session_factory):
 
     async with session_factory() as s:
         pm_a = PositionManager(account_id="A", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_a, pm_a), _buy_fill("BTC/USDT", at))
+        await orch.commit_fill(_txn_ops(s, session_a, pm_a), _buy_fill("BTC/USDT", at))
 
     async with session_factory() as verify:
         pos_a = await PositionRepository(verify).get(session_a, "BTC/USDT")
@@ -240,7 +250,7 @@ async def test_restart_restores_exact_state(session_factory):
 
     async with session_factory() as s:
         pm_before = PositionManager(account_id="RESTART", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm_before), fill)
+        await orch.commit_fill(_txn_ops(s, session_id, pm_before), fill)
     cash_before = pm_before.ledger.cash_balance
     pos_before = pm_before.positions["BTC/USDT"]
 
@@ -279,11 +289,11 @@ async def test_pnl_buckets_survive_restart(session_factory):
     pm = PositionManager(account_id="BUCKET_TEST", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
 
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), buy)
+        await orch.commit_fill(_txn_ops(s, session_id, pm), buy)
 
     sell = _sell_fill("BTC/USDT", at + timedelta(minutes=5), price=Decimal("51000"), qty=Decimal("0.1"))
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), sell)
+        await orch.commit_fill(_txn_ops(s, session_id, pm), sell)
 
     day_start = at.replace(hour=0, minute=0, second=0, microsecond=0)
     async with session_factory() as verify:
@@ -302,12 +312,12 @@ async def test_late_fill_updates_correct_bucket(session_factory):
     pm = PositionManager(account_id="LATE_TEST", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
     orch = FillCommitOrchestrator()
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), buy)
+        await orch.commit_fill(_txn_ops(s, session_id, pm), buy)
 
     # Processed "late" (now), but fill.executed_at is yesterday -> must land in yesterday's bucket.
     sell = _sell_fill("BTC/USDT", yesterday + timedelta(minutes=10), price=Decimal("52000"), qty=Decimal("0.1"))
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), sell)
+        await orch.commit_fill(_txn_ops(s, session_id, pm), sell)
 
     yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -352,7 +362,7 @@ async def test_recovery_reconciles_and_transitions_to_ready(session_factory):
     pm = PositionManager(account_id="RECOVERY_OK", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
     orch = FillCommitOrchestrator()
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), _buy_fill("BTC/USDT", at))
+        await orch.commit_fill(_txn_ops(s, session_id, pm), _buy_fill("BTC/USDT", at))
 
     recovery_service = PaperRecoveryService()
     async with session_factory() as s:
@@ -373,7 +383,7 @@ async def test_recovery_detects_ledger_mismatch_stays_recovery_required(session_
     pm = PositionManager(account_id="RECOVERY_BAD", ledger=PortfolioLedger(initial_cash=Decimal("10000")))
     orch = FillCommitOrchestrator()
     async with session_factory() as s:
-        await orch.commit_fill(SqlAlchemyFillTxnOps(s, session_id, pm), _buy_fill("BTC/USDT", at))
+        await orch.commit_fill(_txn_ops(s, session_id, pm), _buy_fill("BTC/USDT", at))
 
     # Corrupt the materialized position row directly (simulating drift/corruption) so it no
     # longer matches what the ledger implies.

@@ -133,6 +133,53 @@ class PaperReport(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class PaperEquityPoint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of_time: datetime
+    cash_balance: Decimal = Field(ge=Decimal("0.0"))
+    asset_market_value: Decimal = Field(ge=Decimal("0.0"))
+    nav: Decimal = Field(ge=Decimal("0.0"))
+    drawdown_pct: Decimal = Field(ge=Decimal("0.0"), le=Decimal("1.0"))
+
+
+class PaperTradeRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    fill_id: UUID
+    client_order_id: UUID
+    symbol: str
+    side: str
+    quantity: Decimal = Field(gt=Decimal("0.0"))
+    fill_price: Decimal = Field(gt=Decimal("0.0"))
+    fee: Decimal = Field(ge=Decimal("0.0"))
+    realized_pnl: Optional[Decimal] = None
+    executed_at: datetime
+
+
+class PaperPortfolioReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    account_id: str
+    initial_cash: Decimal = Field(gt=Decimal("0.0"))
+    cash_balance: Decimal = Field(ge=Decimal("0.0"))
+    nav: Decimal = Field(ge=Decimal("0.0"))
+    total_return_pct: Decimal
+    max_drawdown_pct: Decimal = Field(ge=Decimal("0.0"), le=Decimal("1.0"))
+    total_fees: Decimal = Field(ge=Decimal("0.0"))
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    trade_count: int = Field(ge=0)
+    winning_exit_count: int = Field(ge=0)
+    losing_exit_count: int = Field(ge=0)
+    win_rate: Decimal = Field(ge=Decimal("0.0"), le=Decimal("1.0"))
+    open_position_count: int = Field(ge=0)
+    long_only: bool = True
+    equity_curve: List[PaperEquityPoint] = Field(default_factory=list)
+    trade_history: List[PaperTradeRecord] = Field(default_factory=list)
+    generated_at: datetime
+
+
 class BacktestPaperComparison(BaseModel):
     comparison_id: UUID = Field(default_factory=uuid4)
     paper_session_id: UUID

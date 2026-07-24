@@ -91,6 +91,15 @@ class ExchangeOrderRequest(BaseModel):
             raise ValueError("Safety Invariant Violation: limit_price cannot exceed maximum_entry_price")
         if self.quantity > self.remaining_approved_quantity:
             raise ValueError("Safety Invariant Violation: quantity cannot exceed remaining_approved_quantity")
+        notional_price = self.maximum_entry_price if self.side == "BUY" else self.limit_price
+        if self.quantity * notional_price > self.remaining_maximum_notional:
+            raise ValueError(
+                "Safety Invariant Violation: order notional exceeds remaining maximum notional"
+            )
+        if self.expires_at <= self.submitted_at:
+            raise ValueError("Safety Invariant Violation: expires_at must be after submitted_at")
+        if self.reference_price is not None and self.reference_price <= Decimal("0.0"):
+            raise ValueError("Safety Invariant Violation: reference_price must be positive")
         return self
 
 

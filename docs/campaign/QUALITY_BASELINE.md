@@ -198,3 +198,16 @@ unavailable state without private API, order or live-trading behavior.
 
 The known failure remains missing Alembic config. Shadow evaluation reads injected public
 historical candles only; runtime/replay stores are isolated and incomplete windows retry.
+
+## Phase 12 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Paper/position/durability focused tests | 41 passed, 12 skipped |
+| `.venv/bin/pytest tests/ -q` | 589 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check packages/paper packages/positions tests/unit/test_paper_trading.py` | clean |
+| Targeted mypy | 3 pre-existing shared errors |
+
+The Phase 12 tests are offline and deterministic. They cover fee/slippage, cash protection,
+duplicate orders/fills, retry after rejected accounting, equity/drawdown and report history.
+No private API, live-order path or SHORT support was added.

@@ -5,10 +5,11 @@ is verified by unit tests using a fake ops object. The SQLAlchemy implementation
 NOT executed against PostgreSQL in this environment (IMPLEMENTED_NOT_VERIFIED).
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
-from typing import List, Protocol
+from typing import List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,7 @@ from packages.persistence.repositories import (
     RiskStateRepository,
 )
 from packages.positions.manager import PositionManager
+from packages.positions.models import PositionStatus
 
 # Mandated order for committing one fill; a single DB transaction wraps all of it.
 FILL_COMMIT_STEP_ORDER: List[str] = [
@@ -128,7 +130,14 @@ class SqlAlchemyFillTxnOps:
     second time, which would double count).
     """
 
-    def __init__(self, session: AsyncSession, session_id: UUID, position_manager: PositionManager) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        position_manager: PositionManager,
+        initial_stop_price: Optional[Decimal] = None,
+        take_profit_price: Optional[Decimal] = None,
+    ) -> None:
         self.session = session
         self.session_id = session_id
         self.position_manager = position_manager
@@ -141,6 +150,9 @@ class SqlAlchemyFillTxnOps:
         self._entries: List = []
         self._pnl_entry = None
         self._position = None
+        self.initial_stop_price = initial_stop_price
+        self.take_profit_price = take_profit_price
+        self._memory_snapshot = None
 
     async def fill_already_committed(self, fill_id: UUID) -> bool:
         return await self.fill_repo.exists(fill_id)
@@ -150,9 +162,33 @@ class SqlAlchemyFillTxnOps:
 
     async def insert_ledger_entries(self, fill: Fill) -> None:
         # Domain calculation (pure, deterministic): compute ledger entries once here.
+        self._memory_snapshot = deepcopy(self.position_manager.__dict__)
         pos_before = self.position_manager.positions.get(fill.symbol)
+        if fill.side == "SELL" and (
+            pos_before is None
+            or pos_before.status == PositionStatus.CLOSED
+            or fill.quantity > pos_before.available_quantity
+        ):
+            raise ValueError(
+                "INSUFFICIENT_POSITION_QUANTITY: durable SELL exceeds available LONG position"
+            )
+        if pos_before is not None and fill.executed_at < pos_before.last_fill_at:
+            raise ValueError("OUT_OF_ORDER_FILL: durable fill predates position state")
+        if (
+            fill.side == "BUY"
+            and (pos_before is None or pos_before.status == PositionStatus.CLOSED)
+            and (self.initial_stop_price is None or self.take_profit_price is None)
+        ):
+            raise ValueError(
+                "MISSING_DURABLE_PROTECTION: BUY requires approved stop and take-profit"
+            )
         avg_entry = pos_before.average_entry_price if pos_before else Decimal("0.0")
-        entries, pnl_entry = self.position_manager.ledger.process_fill(fill, fill.executed_at, avg_entry)
+        entries, pnl_entry = self.position_manager.ledger.process_fill(
+            fill,
+            fill.executed_at,
+            avg_entry,
+            pos_before.position_id if pos_before is not None else None,
+        )
         self._entries = entries
         self._pnl_entry = pnl_entry
         await self.ledger_repo.insert_entries(
@@ -160,6 +196,7 @@ class SqlAlchemyFillTxnOps:
             fill.fill_id,
             [
                 {
+                    "entry_id": e.entry_id,
                     "asset": e.asset,
                     "entry_type": e.entry_type.value,
                     "amount": e.amount,
@@ -172,7 +209,13 @@ class SqlAlchemyFillTxnOps:
 
     async def upsert_position(self, fill: Fill) -> None:
         # Applies the SAME entries/pnl_entry already persisted above — never re-touches the ledger.
-        pos, _ = self.position_manager.apply_fill_accounting(fill, self._entries, self._pnl_entry)
+        pos, _ = self.position_manager.apply_fill_accounting(
+            fill,
+            self._entries,
+            self._pnl_entry,
+            initial_stop_price=self.initial_stop_price,
+            take_profit_price=self.take_profit_price,
+        )
         self._position = pos
         await self.position_repo.upsert(
             self.session_id,
@@ -182,6 +225,16 @@ class SqlAlchemyFillTxnOps:
             pos.total_cost_basis,
             self._pnl_entry.realized_pnl if self._pnl_entry else Decimal("0"),
             pos.status.value if hasattr(pos.status, "value") else str(pos.status),
+            position_id=pos.position_id,
+            total_fees=pos.total_fees,
+            initial_stop_price=pos.initial_stop_price,
+            active_stop_price=pos.active_stop_price,
+            take_profit_price=pos.take_profit_price,
+            trailing_stop_price=pos.trailing_stop_price,
+            current_market_price=pos.current_market_price,
+            market_value=pos.market_value,
+            opened_at=pos.opened_at,
+            last_fill_at=pos.last_fill_at,
         )
 
     async def update_pnl_bucket(self, fill: Fill, realized_pnl: Decimal) -> None:
@@ -213,6 +266,11 @@ class SqlAlchemyFillTxnOps:
 
     async def commit(self) -> None:
         await self.session.commit()
+        self._memory_snapshot = None
 
     async def rollback(self) -> None:
         await self.session.rollback()
+        if self._memory_snapshot is not None:
+            self.position_manager.__dict__.clear()
+            self.position_manager.__dict__.update(self._memory_snapshot)
+            self._memory_snapshot = None

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
+from uuid import NAMESPACE_URL, uuid5
 
 from packages.execution.models import Fill
 from packages.positions.ledger import PortfolioLedger, portfolio_ledger
@@ -37,6 +38,8 @@ class PositionManager:
         # fill that has actually been applied via apply_fill_accounting, paired with the
         # RealizedPnlEntry produced (None for BUY fills / position-opening fills).
         self.fill_history: List[Tuple[Fill, Optional[RealizedPnlEntry]]] = []
+        self.total_fees_lifetime = Decimal("0.0")
+        self.last_mark_times: Dict[str, datetime] = {}
 
     @staticmethod
     def _utc_day_key(dt: datetime) -> str:
@@ -67,25 +70,54 @@ class PositionManager:
     def process_fill(
         self,
         fill: Fill,
-        current_time: Optional[datetime] = None
+        current_time: Optional[datetime] = None,
+        initial_stop_price: Optional[Decimal] = None,
+        take_profit_price: Optional[Decimal] = None,
     ) -> Tuple[Position, Optional[RealizedPnlEntry]]:
 
         if current_time is None:
             current_time = datetime.now(timezone.utc)
 
         pos = self.positions.get(fill.symbol)
+        if fill.fill_id in self.ledger.processed_fill_ids:
+            if pos is None:
+                raise ValueError("LEDGER_POSITION_DIVERGENCE: Processed fill has no position")
+            return pos, None
+        if pos is not None and fill.executed_at < pos.last_fill_at:
+            raise ValueError("OUT_OF_ORDER_FILL: fill predates current position state")
+        if fill.side == "SELL" and (
+            pos is None
+            or pos.status == PositionStatus.CLOSED
+            or fill.quantity > pos.available_quantity
+        ):
+            raise ValueError(
+                "INSUFFICIENT_POSITION_QUANTITY: Cannot SELL more than open LONG position quantity"
+            )
         avg_entry = pos.average_entry_price if pos else Decimal("0.0")
 
         # 1. Update Portfolio Ledger (session-scoped)
-        entries, pnl_entry = self.ledger.process_fill(fill, current_time, avg_entry)
+        entries, pnl_entry = self.ledger.process_fill(
+            fill,
+            current_time,
+            avg_entry,
+            pos.position_id if pos is not None else None,
+        )
 
-        return self.apply_fill_accounting(fill, entries, pnl_entry)
+        return self.apply_fill_accounting(
+            fill,
+            entries,
+            pnl_entry,
+            initial_stop_price=initial_stop_price,
+            take_profit_price=take_profit_price,
+        )
 
     def apply_fill_accounting(
         self,
         fill: Fill,
         entries: List[LedgerEntry],  # noqa: ARG002 (accepted for API symmetry with process_fill)
         pnl_entry: Optional[RealizedPnlEntry],
+        initial_stop_price: Optional[Decimal] = None,
+        take_profit_price: Optional[Decimal] = None,
     ) -> Tuple[Position, Optional[RealizedPnlEntry]]:
         """Applies position/PnL-bucket bookkeeping for a fill whose ledger entries were already
         computed elsewhere (e.g. by the durable fill-commit orchestrator, which persists the same
@@ -96,6 +128,7 @@ class PositionManager:
             self._record_realized_pnl(pnl_entry.realized_pnl, pnl_entry.exit_fee, fill.executed_at)
 
         self.fill_history.append((fill, pnl_entry))
+        self.total_fees_lifetime += fill.fee
 
         pos = self.positions.get(fill.symbol)
 
@@ -105,6 +138,10 @@ class PositionManager:
                 cost_basis = fill.quote_quantity + fill.fee
                 avg_price = cost_basis / fill.quantity
                 pos = Position(
+                    position_id=uuid5(
+                        NAMESPACE_URL,
+                        f"position:{self.account_id}:{fill.symbol}:{fill.fill_id}",
+                    ),
                     account_id=self.account_id,
                     exchange="binance",
                     symbol=fill.symbol,
@@ -120,6 +157,9 @@ class PositionManager:
                     total_fees=fill.fee,
                     current_market_price=fill.price,
                     market_value=fill.quantity * fill.price,
+                    initial_stop_price=initial_stop_price,
+                    active_stop_price=initial_stop_price,
+                    take_profit_price=take_profit_price,
                     opened_at=fill.executed_at,
                     last_fill_at=fill.executed_at,
                     version=1
@@ -176,6 +216,7 @@ class PositionManager:
                 "version": pos.version + 1
             })
 
+        pos = Position.model_validate(pos.model_dump())
         self.positions[fill.symbol] = pos
         return pos, pnl_entry
 
@@ -188,6 +229,11 @@ class PositionManager:
 
         if current_time is None:
             current_time = datetime.now(timezone.utc)
+        if mark_price <= Decimal("0.0"):
+            raise ValueError("INVALID_MARK_PRICE: mark_price must be positive")
+        previous_mark_time = self.last_mark_times.get(symbol)
+        if previous_mark_time is not None and current_time < previous_mark_time:
+            raise ValueError("OUT_OF_ORDER_MARK: mark time predates current valuation state")
 
         pos = self.positions.get(symbol)
         if not pos or pos.status == PositionStatus.CLOSED:
@@ -195,13 +241,17 @@ class PositionManager:
 
         mkt_val = pos.quantity * mark_price
         unrealized = mkt_val - pos.total_cost_basis
-        pos = pos.model_copy(update={
-            "current_market_price": mark_price,
-            "market_value": mkt_val,
-            "unrealized_pnl": unrealized,
-            "version": pos.version + 1
-        })
+        pos = Position.model_validate(
+            pos.model_dump()
+            | {
+                "current_market_price": mark_price,
+                "market_value": mkt_val,
+                "unrealized_pnl": unrealized,
+                "version": pos.version + 1,
+            }
+        )
         self.positions[symbol] = pos
+        self.last_mark_times[symbol] = current_time
         return pos
 
     def get_portfolio_snapshot(self, current_time: Optional[datetime] = None) -> PortfolioSnapshot:
@@ -250,7 +300,7 @@ class PositionManager:
             realized_pnl_today=self.realized_pnl_window("DAILY", current_time),
             realized_pnl_week=self.realized_pnl_window("WEEKLY", current_time),
             unrealized_pnl=sum((p.unrealized_pnl for p in active_positions), Decimal("0.0")),
-            total_fees=sum((p.total_fees for p in self.positions.values()), Decimal("0.0")),
+            total_fees=self.total_fees_lifetime,
             equity_peak=self.equity_peak,
             drawdown_pct=drawdown,
             positions=risk_views,

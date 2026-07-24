@@ -112,6 +112,43 @@ class PaperPipeline:
                     intent, candle.close_time, owner_position_manager=pos_mgr
                 )
                 if approved_exit and app_status == "APPROVED":
+                    approved_minimum = approved_exit.minimum_exit_price or Decimal("0")
+                    slippage_floor = candle.close_price * (
+                        Decimal("1")
+                        - approved_exit.maximum_slippage_bps / Decimal("10000")
+                    )
+                    minimum_fill_price = max(approved_minimum, slippage_floor)
+                    if candle.close_price < minimum_fill_price:
+                        pos_mgr.update_mark_price(
+                            candle.symbol,
+                            candle.close_price,
+                            candle.close_time,
+                        )
+                        paper_event_journal.append_event(
+                            session_id=session_id,
+                            event_type="protective_exit_unresolved",
+                            event_id=uuid4(),
+                            source="paper_pipeline",
+                            exchange_event_time=candle.close_time,
+                            payload_str=(
+                                f"symbol={candle.symbol};"
+                                f"market={candle.close_price};"
+                                f"approved_minimum={minimum_fill_price}"
+                            ),
+                        )
+                        paper_session_manager.transition_status(
+                            session_id,
+                            PaperSessionStatus.HALTED,
+                            reason="PROTECTIVE_EXIT_OUTSIDE_APPROVED_PRICE_ENVELOPE",
+                        )
+                        logger.warning(
+                            "Paper protective exit blocked outside approved price envelope",
+                            extra={
+                                "session_id": str(session_id),
+                                "symbol": candle.symbol,
+                            },
+                        )
+                        return
                     req = ExchangeOrderRequest(
                         approved_order_id=approved_exit.approved_exit_order_id,
                         client_order_id=approved_exit.client_order_id,
@@ -120,11 +157,11 @@ class PaperPipeline:
                         side="SELL",
                         order_type=SimulatorOrderType.SINGLE_MARKETABLE_LIMIT,
                         quantity=approved_exit.approved_quantity,
-                        limit_price=candle.close_price * Decimal("0.999"),
+                        limit_price=minimum_fill_price,
                         maximum_entry_price=candle.close_price * Decimal("1.001"),
                         reference_price=candle.close_price,
                         remaining_approved_quantity=approved_exit.approved_quantity,
-                        remaining_maximum_notional=approved_exit.approved_quantity * candle.close_price,
+                        remaining_maximum_notional=approved_exit.approved_quantity * minimum_fill_price,
                         submitted_at=candle.close_time,
                         expires_at=candle.close_time + timedelta(minutes=15)
                     )
@@ -205,7 +242,12 @@ class PaperPipeline:
         )
         resp, fills = await self.adapter.submit_order(order_req)
         for fill in fills:
-            pos_mgr.process_fill(fill, candle.close_time)
+            pos_mgr.process_fill(
+                fill,
+                candle.close_time,
+                initial_stop_price=approved.approved_stop_price,
+                take_profit_price=intent.suggested_take_profit_price,
+            )
 
 
 paper_pipeline = PaperPipeline()

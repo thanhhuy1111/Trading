@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from packages.common.logger import logger
 from packages.execution.models import Fill
@@ -33,7 +33,8 @@ class PortfolioLedger:
         self,
         fill: Fill,
         current_time: Optional[datetime] = None,
-        average_entry_price: Decimal = Decimal("0.0")
+        average_entry_price: Decimal = Decimal("0.0"),
+        position_id: Optional[UUID] = None,
     ) -> Tuple[List[LedgerEntry], Optional[RealizedPnlEntry]]:
 
         if current_time is None:
@@ -44,8 +45,7 @@ class PortfolioLedger:
             logger.info("Fill already processed by PortfolioLedger", extra={"fill_id": str(fill.fill_id)})
             return [], None
 
-        self.processed_fill_ids[fill.fill_id] = True
-        tx_id = uuid4()
+        tx_id = uuid5(NAMESPACE_URL, f"ledger-tx:{self.account_id}:{fill.fill_id}")
         new_entries: List[LedgerEntry] = []
         pnl_entry: Optional[RealizedPnlEntry] = None
 
@@ -69,6 +69,7 @@ class PortfolioLedger:
             # 1. CASH_DEBIT entry (quote quantity)
             self.sequence_counter += 1
             e1 = LedgerEntry(
+                entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:buy-cash"),
                 transaction_id=tx_id,
                 account_id=self.account_id,
                 asset="USDT",
@@ -87,6 +88,7 @@ class PortfolioLedger:
             if fill.fee > Decimal("0.0"):
                 self.sequence_counter += 1
                 e_fee = LedgerEntry(
+                    entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:buy-fee"),
                     transaction_id=tx_id,
                     account_id=self.account_id,
                     asset=fill.fee_asset or "USDT",
@@ -104,6 +106,7 @@ class PortfolioLedger:
             # 3. ASSET_CREDIT entry (base asset quantity)
             self.sequence_counter += 1
             e2 = LedgerEntry(
+                entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:buy-asset"),
                 transaction_id=tx_id,
                 account_id=self.account_id,
                 asset=base_asset,
@@ -140,6 +143,7 @@ class PortfolioLedger:
             # 1. CASH_CREDIT entry (gross quote quantity)
             self.sequence_counter += 1
             e1 = LedgerEntry(
+                entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:sell-cash"),
                 transaction_id=tx_id,
                 account_id=self.account_id,
                 asset="USDT",
@@ -158,6 +162,7 @@ class PortfolioLedger:
             if fill.fee > Decimal("0.0"):
                 self.sequence_counter += 1
                 e_fee = LedgerEntry(
+                    entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:sell-fee"),
                     transaction_id=tx_id,
                     account_id=self.account_id,
                     asset=fill.fee_asset or "USDT",
@@ -175,6 +180,7 @@ class PortfolioLedger:
             # 3. ASSET_DEBIT entry (base asset quantity)
             self.sequence_counter += 1
             e2 = LedgerEntry(
+                entry_id=uuid5(NAMESPACE_URL, f"ledger-entry:{fill.fill_id}:sell-asset"),
                 transaction_id=tx_id,
                 account_id=self.account_id,
                 asset=base_asset,
@@ -190,8 +196,10 @@ class PortfolioLedger:
             new_entries.append(e2)
 
             pnl_entry = RealizedPnlEntry(
+                pnl_entry_id=uuid5(NAMESPACE_URL, f"realized-pnl:{fill.fill_id}"),
                 account_id=self.account_id,
-                position_id=uuid4(),
+                position_id=position_id
+                or uuid5(NAMESPACE_URL, f"position-fallback:{self.account_id}:{fill.symbol}"),
                 sell_fill_id=fill.fill_id,
                 quantity=fill.quantity,
                 sale_proceeds=fill.quote_quantity,
@@ -201,6 +209,9 @@ class PortfolioLedger:
                 realized_at=fill.executed_at
             )
 
+        # Mark processed only after every invariant and balance check succeeds. A rejected
+        # fill must remain retryable after the caller reconciles the account.
+        self.processed_fill_ids[fill.fill_id] = True
         self.ledger_entries.extend(new_entries)
         return new_entries, pnl_entry
 

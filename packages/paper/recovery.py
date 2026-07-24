@@ -1,10 +1,11 @@
 from decimal import Decimal
 from typing import Optional, Tuple
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.common.logger import logger
+from packages.execution.models import Fill, LiquidityType
 from packages.paper.journal import paper_event_journal
 from packages.paper.models import PaperSessionStatus
 from packages.paper.session import paper_session_manager
@@ -115,33 +116,114 @@ class PaperRecoveryService:
                 )
             return result, None
 
-        # Rebuild a fresh in-memory PositionManager/ledger purely from the durable rows.
-        ledger = PortfolioLedger(initial_cash=initial_cash, account_id=f"PAPER_ACCT_{session_id.hex[:8]}")
-        ledger.cash_balance = materialized_cash
-        ledger.available_cash = materialized_cash
-        for row in position_rows:
-            base_asset = row["symbol"].split("/")[0]
-            ledger.asset_balances[base_asset] = Decimal(str(row["quantity"]))
-        for row in fill_rows:
-            ledger.processed_fill_ids[row["fill_id"]] = True
+        open_rows = [
+            row
+            for row in position_rows
+            if row["status"] != "CLOSED" and Decimal(str(row["quantity"])) > Decimal("0")
+        ]
+        missing_protection = [
+            row["symbol"]
+            for row in open_rows
+            if row.get("initial_stop_price") is None or row.get("take_profit_price") is None
+        ]
+        if missing_protection:
+            result = ReconciliationResult(
+                passed=False,
+                issues=[
+                    "MISSING_DURABLE_PROTECTION:" + ",".join(sorted(missing_protection))
+                ],
+            )
+            logger.error(
+                "Durable recovery blocked: open position lacks persisted protection",
+                extra={"session_id": str(session_id), "symbols": missing_protection},
+            )
+            return result, None
 
+        # Rebuild by replaying immutable durable fills. This restores fee totals, trade
+        # history, realized buckets and deterministic position/ledger identifiers rather
+        # than synthesizing only the latest quantity.
+        ledger = PortfolioLedger(initial_cash=initial_cash, account_id=f"PAPER_ACCT_{session_id.hex[:8]}")
         pos_mgr = PositionManager(account_id=f"PAPER_ACCT_{session_id.hex[:8]}", ledger=ledger)
-        for row in position_rows:
-            if row["status"] != "CLOSED" and Decimal(str(row["quantity"])) > Decimal("0"):
-                pos_mgr.positions[row["symbol"]] = Position(
-                    account_id=pos_mgr.account_id,
+        positions_by_symbol = {row["symbol"]: row for row in position_rows}
+        try:
+            for row in sorted(fill_rows, key=lambda item: item["sequence_number"]):
+                fill = Fill(
+                    fill_id=row["fill_id"],
+                    exchange_fill_id=f"DURABLE_{row['fill_id']}",
+                    exchange_order_id=uuid5(
+                        NAMESPACE_URL, f"durable-order:{row['client_order_id']}"
+                    ),
+                    client_order_id=row["client_order_id"],
                     symbol=row["symbol"],
-                    status=PositionStatus(row["status"]),
+                    side=row["side"],
                     quantity=Decimal(str(row["quantity"])),
-                    available_quantity=Decimal(str(row["quantity"])),
-                    reserved_exit_quantity=Decimal("0.0"),
-                    average_entry_price=Decimal(str(row["average_entry_price"])),
-                    total_cost_basis=Decimal(str(row["total_cost_basis"])),
-                    realized_pnl=Decimal(str(row["realized_pnl"])),
-                    opened_at=row["updated_at"],
-                    last_fill_at=row["updated_at"],
-                    version=row["version"],
+                    price=Decimal(str(row["price"])),
+                    quote_quantity=Decimal(str(row["quote_quantity"])),
+                    fee=Decimal(str(row["fee"])),
+                    fee_asset=row["fee_asset"],
+                    liquidity=LiquidityType.TAKER,
+                    executed_at=row["event_time"],
                 )
+                persisted = positions_by_symbol.get(fill.symbol, {})
+                pos_mgr.process_fill(
+                    fill,
+                    fill.executed_at,
+                    initial_stop_price=(
+                        Decimal(str(persisted["initial_stop_price"]))
+                        if fill.side == "BUY" and persisted.get("initial_stop_price") is not None
+                        else None
+                    ),
+                    take_profit_price=(
+                        Decimal(str(persisted["take_profit_price"]))
+                        if fill.side == "BUY" and persisted.get("take_profit_price") is not None
+                        else None
+                    ),
+                )
+        except (ValueError, KeyError) as exc:
+            return ReconciliationResult(
+                passed=False,
+                issues=[f"DURABLE_REPLAY_FAILED:{type(exc).__name__}"],
+            ), None
+
+        if ledger.cash_balance != materialized_cash:
+            return ReconciliationResult(
+                passed=False,
+                issues=["DURABLE_REPLAY_CASH_MISMATCH"],
+            ), None
+
+        for row in open_rows:
+            replayed = pos_mgr.positions.get(row["symbol"])
+            if replayed is None:
+                return ReconciliationResult(
+                    passed=False,
+                    issues=[f"DURABLE_REPLAY_POSITION_MISSING:{row['symbol']}"],
+                ), None
+            pos_mgr.positions[row["symbol"]] = Position.model_validate(
+                replayed.model_dump()
+                | {
+                    "position_id": row["id"],
+                    "status": PositionStatus(row["status"]),
+                    "initial_stop_price": Decimal(str(row["initial_stop_price"])),
+                    "active_stop_price": Decimal(str(row["active_stop_price"]))
+                    if row.get("active_stop_price") is not None
+                    else Decimal(str(row["initial_stop_price"])),
+                    "take_profit_price": Decimal(str(row["take_profit_price"])),
+                    "trailing_stop_price": Decimal(str(row["trailing_stop_price"]))
+                    if row.get("trailing_stop_price") is not None
+                    else None,
+                    "current_market_price": Decimal(str(row["current_market_price"]))
+                    if row.get("current_market_price") is not None
+                    else replayed.current_market_price,
+                    "market_value": Decimal(str(row["market_value"]))
+                    if row.get("market_value") is not None
+                    else replayed.market_value,
+                    "opened_at": row.get("opened_at") or replayed.opened_at,
+                    "last_fill_at": row.get("last_fill_at") or replayed.last_fill_at,
+                    "version": row["version"],
+                }
+            )
+            if row.get("current_market_price") is not None:
+                pos_mgr.last_mark_times[row["symbol"]] = row["updated_at"]
                 logger.info(
                     "Recovered open position from durable state",
                     extra={"session_id": str(session_id), "symbol": row["symbol"], "quantity": str(row["quantity"])},

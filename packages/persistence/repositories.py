@@ -8,7 +8,7 @@ requirement that persistence orchestration lives at the application/service laye
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -187,7 +187,7 @@ class LedgerRepository:
             paper_ledger_entries.insert(),
             [
                 {
-                    "entry_id": uuid4(),
+                    "entry_id": e["entry_id"],
                     "session_id": session_id,
                     "fill_id": fill_id,
                     "asset": e["asset"],
@@ -228,27 +228,60 @@ class PositionRepository:
         total_cost_basis: Decimal,
         realized_pnl_delta: Decimal,
         status: str,
+        position_id: Optional[UUID] = None,
+        total_fees: Decimal = Decimal("0"),
+        initial_stop_price: Optional[Decimal] = None,
+        active_stop_price: Optional[Decimal] = None,
+        take_profit_price: Optional[Decimal] = None,
+        trailing_stop_price: Optional[Decimal] = None,
+        current_market_price: Optional[Decimal] = None,
+        market_value: Optional[Decimal] = None,
+        opened_at: Optional[datetime] = None,
+        last_fill_at: Optional[datetime] = None,
     ) -> None:
+        stable_position_id = position_id or uuid5(
+            NAMESPACE_URL,
+            f"paper-position:{session_id}:{symbol}",
+        )
         stmt = (
             pg_insert(paper_positions)
             .values(
-                id=uuid4(),
+                id=stable_position_id,
                 session_id=session_id,
                 symbol=symbol,
                 quantity=quantity,
                 average_entry_price=average_entry_price,
                 total_cost_basis=total_cost_basis,
                 realized_pnl=realized_pnl_delta,
+                total_fees=total_fees,
+                initial_stop_price=initial_stop_price,
+                active_stop_price=active_stop_price,
+                take_profit_price=take_profit_price,
+                trailing_stop_price=trailing_stop_price,
+                current_market_price=current_market_price,
+                market_value=market_value,
+                opened_at=opened_at,
+                last_fill_at=last_fill_at,
                 status=status,
                 version=1,
             )
             .on_conflict_do_update(
                 constraint="uq_paper_position_session_symbol",
                 set_={
+                    "id": stable_position_id,
                     "quantity": quantity,
                     "average_entry_price": average_entry_price,
                     "total_cost_basis": total_cost_basis,
                     "realized_pnl": paper_positions.c.realized_pnl + realized_pnl_delta,
+                    "total_fees": total_fees,
+                    "initial_stop_price": initial_stop_price,
+                    "active_stop_price": active_stop_price,
+                    "take_profit_price": take_profit_price,
+                    "trailing_stop_price": trailing_stop_price,
+                    "current_market_price": current_market_price,
+                    "market_value": market_value,
+                    "opened_at": opened_at,
+                    "last_fill_at": last_fill_at,
                     "status": status,
                     "version": paper_positions.c.version + 1,
                     "updated_at": datetime.utcnow(),

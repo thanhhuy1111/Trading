@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from packages.common.logger import logger
 from packages.execution.adapter_interface import ExchangeExecutionAdapter
@@ -24,6 +24,7 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
         self.latency_config = latency_config or PaperLatencyConfig()
         self.submitted_orders: Dict[UUID, ExchangeOrder] = {}
         self.generated_fills: Dict[UUID, List[Fill]] = {}
+        self.original_requests: Dict[UUID, ExchangeOrderRequest] = {}
 
     @property
     def mode(self) -> ExecutionMode:
@@ -35,6 +36,10 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
     ) -> Tuple[ExchangeOrderResponse, List[Fill]]:
         # 1. Idempotency Check by client_order_id
         if request.client_order_id in self.submitted_orders:
+            if self.original_requests[request.client_order_id] != request:
+                raise ValueError(
+                    "PAPER_IDEMPOTENCY_CONFLICT: client_order_id is bound to another request"
+                )
             logger.info(
                 "Paper order submission idempotent replay",
                 extra={"client_order_id": str(request.client_order_id)}
@@ -50,8 +55,10 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
             )
             return res, existing_fills
 
-        exchange_order_id = uuid4()
-        now = datetime.now(timezone.utc)
+        exchange_order_id = uuid5(NAMESPACE_URL, f"paper-order:{request.client_order_id}")
+        # Paper execution is event-time deterministic. Wall-clock time is never used in
+        # accounting output, so replaying the same immutable request yields the same fill.
+        now = request.submitted_at.astimezone(timezone.utc)
 
         # 2. Realistic Fill Pricing (slippage modelled vs. market reference, then capped)
         slippage_bps = Decimal("5.0")
@@ -67,6 +74,10 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
             fill_price = min(raw_fill_price, request.limit_price, request.maximum_entry_price)
         else:
             # SELL limit semantics: never fill below the minimum acceptable (limit) price.
+            if request.reference_price is not None and request.reference_price < request.limit_price:
+                raise ValueError(
+                    "PAPER_EXIT_PRICE_OUTSIDE_APPROVAL: market is below approved minimum"
+                )
             raw_fill_price = base * (Decimal("1.0") - slippage)
             fill_price = max(raw_fill_price, request.limit_price)
 
@@ -75,8 +86,8 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
         fee = quote_qty * Decimal("0.0010") # 10 bps fee
 
         fill = Fill(
-            fill_id=uuid4(),
-            exchange_fill_id=f"PAPER_FILL_{uuid4().hex[:8]}",
+            fill_id=uuid5(NAMESPACE_URL, f"paper-fill:{request.client_order_id}"),
+            exchange_fill_id=f"PAPER_FILL_{request.client_order_id.hex}",
             exchange_order_id=exchange_order_id,
             client_order_id=request.client_order_id,
             symbol=request.symbol,
@@ -115,6 +126,7 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
 
         self.submitted_orders[request.client_order_id] = order
         self.generated_fills[request.client_order_id] = [fill]
+        self.original_requests[request.client_order_id] = request
 
         response = ExchangeOrderResponse(
             client_order_id=request.client_order_id,
@@ -131,8 +143,15 @@ class PaperExchangeAdapter(ExchangeExecutionAdapter):
         return response, [fill]
 
     async def cancel_order(self, client_order_id: UUID) -> bool:
-        if client_order_id in self.submitted_orders:
-            self.submitted_orders[client_order_id].status = ExchangeOrderStatus.CANCELLED
+        order = self.submitted_orders.get(client_order_id)
+        if order and order.status not in {
+            ExchangeOrderStatus.FILLED,
+            ExchangeOrderStatus.CANCELLED,
+            ExchangeOrderStatus.REJECTED,
+            ExchangeOrderStatus.EXPIRED,
+            ExchangeOrderStatus.FAILED_FINAL,
+        }:
+            order.status = ExchangeOrderStatus.CANCELLED
             return True
         return False
 
