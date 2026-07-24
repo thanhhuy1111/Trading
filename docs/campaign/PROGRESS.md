@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 14 — Advanced Expansion
-- Last completed task: Phase 13 — Experimental Data Collection
-- Next task: Phase 14 — Advanced Expansion
+- Current phase: Phase 15 — Research & Thesis Package
+- Last completed task: Phase 14 — Advanced Expansion
+- Next task: Phase 15 — Research & Thesis Package
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -663,6 +663,38 @@ not edit files.
 ### Next task
 
 Phase 14 — feature-flagged advanced source protocols and safe-unavailable research expansion.
+
+## Phase 14 — Advanced Expansion
+
+Status: **COMPLETE (SAFE-UNAVAILABLE BY DEFAULT)**
+
+### Delivered
+
+- Feature-flagged, licensed, point-in-time provider/evidence contract for News, On-chain,
+  Macro, Sentiment and Market Regime.
+- Exact per-source schemas, three-clock lineage, provenance-domain license grants and a
+  research-only five-agent coordinator.
+- Safe disabled/unconfigured/provider-error/quality/lookahead handling.
+- Exact research-only ETH model binding with no BTC fallback.
+- Reflection and dynamic weighting are proposal-only, immutable and require approval; neither
+  can change production configuration.
+
+### Independent safety review
+
+Independent read-only review found no remaining CRITICAL/HIGH/MEDIUM after fixes. Reviewer did
+not edit files.
+
+### Verification
+
+- Advanced source/proposal tests: 11 passed.
+- Full suite: 605 passed, 12 skipped, 1 known missing-Alembic-config failure.
+- Targeted Ruff and mypy clean.
+- All eight advanced flags and all three trading safety flags remain false.
+
+### Next task
+
+Phase 15 — thesis-ready structure and reproducibility protocol with every unavailable result
+marked `PENDING_EVIDENCE`.
 
 ### Commit and push
 

@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     LIVE_TRADING_ENABLED: bool = False
     PRIVATE_EXCHANGE_API_ENABLED: bool = False
     FEATURE_FLAGS_LIVE_TRADING: bool = False
+    FEATURE_ADVANCED_NEWS: bool = False
+    FEATURE_ADVANCED_ONCHAIN: bool = False
+    FEATURE_ADVANCED_MACRO: bool = False
+    FEATURE_ADVANCED_SENTIMENT: bool = False
+    FEATURE_ADVANCED_REGIME: bool = False
+    FEATURE_ADVANCED_ETH: bool = False
+    FEATURE_ADVANCED_REFLECTION: bool = False
+    FEATURE_ADVANCED_DYNAMIC_WEIGHTS: bool = False
 
     # Server API
     API_HOST: str = "0.0.0.0"

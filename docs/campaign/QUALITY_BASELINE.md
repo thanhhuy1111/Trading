@@ -223,3 +223,15 @@ No private API, live-order path or SHORT support was added.
 
 Tests use synthetic contract records only. No performance evidence, market metric, credential,
 private API or live-trading behavior was created.
+
+## Phase 14 verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| `tests/unit/test_advanced_agents.py` | 11 passed |
+| `.venv/bin/pytest tests/ -q` | 605 passed, 12 skipped, 1 failed |
+| Targeted Ruff | clean |
+| `.venv/bin/mypy packages/agents/advanced.py` | clean |
+
+All provider tests use deterministic test doubles. Real advanced data is not configured and
+remains safe-unavailable; no research result or source evidence was fabricated.
