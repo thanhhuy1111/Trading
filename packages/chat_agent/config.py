@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,16 +10,16 @@ class GeminiSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_API_KEY: str = Field(default="", exclude=True, repr=False)
+    GEMINI_MODEL: str = ""
     GEMINI_THINKING_LEVEL: str = "MINIMAL"  # MINIMAL | LOW | MEDIUM | HIGH
     GEMINI_ENABLE_GOOGLE_SEARCH: bool = False
-    GEMINI_REQUEST_TIMEOUT_SECONDS: float = 30.0
-    GEMINI_MAX_RETRIES: int = 2
+    GEMINI_REQUEST_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=300)
+    GEMINI_MAX_RETRIES: int = Field(default=2, ge=0, le=5)
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.GEMINI_API_KEY)
+        return bool(self.GEMINI_API_KEY and self.GEMINI_MODEL)
 
 
 class OrchestratorSettings(BaseSettings):

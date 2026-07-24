@@ -38,8 +38,8 @@ _THINKING_LEVELS = {"MINIMAL", "LOW", "MEDIUM", "HIGH"}
 
 class GeminiProvider(LLMProvider):
     def __init__(self, settings: GeminiSettings = gemini_settings) -> None:
-        if not settings.GEMINI_API_KEY:
-            raise ProviderError("GEMINI_API_KEY is not configured")
+        if not settings.is_configured:
+            raise ProviderError("Gemini provider is not configured")
         self._settings = settings
         self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -164,13 +164,15 @@ class GeminiProvider(LLMProvider):
                 return self._parse_response(response)
             except asyncio.TimeoutError as exc:
                 last_error = exc
-                timeout_s = self._settings.GEMINI_REQUEST_TIMEOUT_SECONDS
-                raise ProviderTimeoutError(f"Gemini request timed out after {timeout_s}s") from exc
+                if attempt < self._settings.GEMINI_MAX_RETRIES:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                raise ProviderTimeoutError("Gemini request timed out") from exc
             except Exception as exc:  # noqa: BLE001 - translate every SDK error uniformly
                 last_error = exc
                 if attempt < self._settings.GEMINI_MAX_RETRIES:
                     await asyncio.sleep(0.5 * (attempt + 1))
                     continue
-                raise ProviderError(f"Gemini request failed: {exc}") from exc
+                raise ProviderError("Gemini request failed") from exc
 
-        raise ProviderError(f"Gemini request failed: {last_error}")
+        raise ProviderError("Gemini request failed") from last_error

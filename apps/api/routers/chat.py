@@ -37,7 +37,7 @@ def get_orchestrator() -> TradingAdvisorOrchestrator:
     """
     global _orchestrator
     if not gemini_settings.is_configured:
-        raise HTTPException(status_code=503, detail="AI Trading Advisor is not configured (GEMINI_API_KEY missing)")
+        raise HTTPException(status_code=503, detail="AI Trading Advisor is not configured")
     if _orchestrator is None:
         _orchestrator = TradingAdvisorOrchestrator(provider=GeminiProvider(gemini_settings))
     return _orchestrator

@@ -34,9 +34,9 @@ Mục tiêu MVP:
 | 1 | Chuẩn hóa codebase | Hoàn thành trước campaign |
 | 2 | Dữ liệu spot và futures | Hoàn thành |
 | 3 | Feature pipeline | Hoàn thành |
-| 4 | XGBoost | Đang thực hiện |
-| 5 | Gemini 3.5 Flash | Chưa bắt đầu |
-| 6 | Technical và Derivatives Agents | Chưa bắt đầu |
+| 4 | XGBoost | Hoàn thành |
+| 5 | Gemini structured provider | Hoàn thành |
+| 6 | Technical và Derivatives Agents | Đang thực hiện |
 | 7 | Bull–Bear Debate | Chưa bắt đầu |
 | 8 | Verification và Risk | Chưa bắt đầu |
 | 9 | Manager Agent | Chưa bắt đầu |

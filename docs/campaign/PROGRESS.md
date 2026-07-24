@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Phase 5 — Technical Analysis Agent
-- Last completed task: 4E — Runtime Inference
-- Next task: Phase 5 — Technical Analysis Agent
+- Current phase: Phase 6 — Specialist Agents
+- Last completed task: Phase 5 — Gemini Structured Provider
+- Next task: Phase 6 — Specialist Agents
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 
@@ -348,6 +348,60 @@ comparing runtime output with independently calculated temperature-scaled probab
 Phases 4A–4E are complete. Synthetic fixtures validate contracts only; no persistent approved
 model or claim of real-market performance was created. Runtime is safely unavailable unless
 an approval-service-backed artifact satisfies every exact gate.
+
+## Phase 5 — Gemini Structured Provider
+
+Status: **COMPLETE**
+
+### Research and decisions
+
+- Reused the existing `google-genai` dependency, chat provider boundary and LLM reliability
+  patterns; no second SDK or real-provider test path was introduced.
+- Official Gemini docs confirm JSON-schema/Pydantic structured output, but also require
+  application semantic validation. Model availability and quotas are account-specific, so
+  `GEMINI_MODEL` has no code default and must be configured.
+- References:
+  [structured output](https://ai.google.dev/gemini-api/docs/structured-output),
+  [Python SDK](https://googleapis.github.io/python-genai/index.html),
+  [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+### Delivered
+
+- Provider-neutral typed structured request/result/health/telemetry contracts.
+- Exact immutable append-only Prompt Registry with checksum and safe simple placeholders.
+- Gemini adapter with lazy SDK client, strict JSON schema, duplicate-key/NaN/Infinity
+  rejection, no string-to-number coercion, `extra=forbid` enforcement and Pydantic validation.
+- Bounded timeout/retry/rate-limit/transient handling; invalid output is terminal.
+- Configuration-only health reports `CONFIGURED`/`NOT_CONFIGURED`, not fabricated remote
+  availability.
+- Honest telemetry separates configured model ID from SDK-served model version and preserves
+  token usage for completed invalid responses. Missing provider usage stays null.
+- API keys are excluded from repr/serialization, raw SDK errors are not exposed, sensitive
+  prompt names/values are blocked and `.env.example` contains no model/key value.
+- Existing chat Gemini timeout/retry settings are now bounded and its model ID is also
+  configuration-only.
+
+No live Gemini API call was made. All provider tests use deterministic scripted transports.
+
+### Independent safety review
+
+Read-only review found strict-JSON ambiguity, unsafe formatter fields, served-model telemetry,
+failed-output token accounting and unbounded legacy chat settings. All HIGH/MEDIUM findings
+were fixed with regressions. Final review reported no remaining CRITICAL/HIGH/MEDIUM.
+
+### Verification
+
+- Phase-focused provider/LLM/chat tests → 60 passed.
+- `.venv/bin/pytest tests/ -q` → 554 passed, 12 skipped, 1 failed.
+- Sole failure remains the known missing `infra/migrations/alembic.ini`.
+- `.venv/bin/ruff check .` → clean.
+- `.venv/bin/mypy packages/ apps/` → 180 errors in 67 files.
+- `git diff --check` → clean; safety flags remain `False/False/False`.
+
+### Next task
+
+Phase 6 — Specialist Agents: Technical, Derivatives and quantitative wrapper, using only
+precomputed values and evidence references through the Phase 5 provider contract.
 
 ### Commit and push
 
