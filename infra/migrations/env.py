@@ -2,7 +2,7 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -16,8 +16,13 @@ if config.config_file_name is not None:
 target_metadata = None
 
 
+def _configured_url() -> str:
+    configured = (config.get_main_option("sqlalchemy.url") or "").strip()
+    return configured or settings.DATABASE_URL
+
+
 def run_migrations_offline() -> None:
-    url = settings.DATABASE_URL.replace("+asyncpg", "")
+    url = _configured_url().replace("+asyncpg", "")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -37,9 +42,10 @@ def _ensure_version_column_width(connection: Connection) -> None:
     connection.execute(text(
         "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(255) NOT NULL)"
     ))
-    connection.execute(text(
-        "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
-    ))
+    if connection.dialect.name != "sqlite":
+        connection.execute(text(
+            "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
+        ))
     # Commit this preparatory DDL now so Alembic's own context.begin_transaction() starts a
     # fresh transaction rather than nesting inside (and silently depending on) this one.
     connection.commit()
@@ -54,7 +60,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    configuration["sqlalchemy.url"] = _configured_url()
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -66,6 +72,19 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    configuration = config.get_section(config.config_ini_section, {})
+    configured_url = _configured_url()
+    configuration["sqlalchemy.url"] = configured_url
+    if configured_url.startswith("sqlite"):
+        connectable = engine_from_config(
+            configuration,
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
+        with connectable.connect() as connection:
+            do_run_migrations(connection)
+        connectable.dispose()
+        return
     asyncio.run(run_async_migrations())
 
 

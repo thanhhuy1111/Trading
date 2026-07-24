@@ -16,6 +16,9 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+UUID_TYPE = sa.Uuid().with_variant(postgresql.UUID(as_uuid=True), "postgresql")
+JSON_TYPE = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
+
 
 def upgrade() -> None:
     # NOTE (Round 4 durability fix): this initial migration originally also declared
@@ -46,11 +49,11 @@ def upgrade() -> None:
     # 9. Incidents
     op.create_table(
         'incidents',
-        sa.Column('incident_id', postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('incident_id', UUID_TYPE, primary_key=True),
         sa.Column('severity', sa.String(32), nullable=False),
         sa.Column('service_name', sa.String(64), nullable=False),
         sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('details', postgresql.JSONB(), server_default='{}'),
+        sa.Column('details', JSON_TYPE, server_default='{}'),
         sa.Column('is_acknowledged', sa.Boolean(), default=False),
         sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now())
     )
@@ -58,12 +61,12 @@ def upgrade() -> None:
     # 10. Audit Log (Append-Only)
     op.create_table(
         'audit_events',
-        sa.Column('event_id', postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('event_id', UUID_TYPE, primary_key=True),
         sa.Column('event_type', sa.String(64), nullable=False),
         sa.Column('service_name', sa.String(64), nullable=False),
         sa.Column('actor', sa.String(64), default='system'),
         sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column('payload', postgresql.JSONB(), server_default='{}')
+        sa.Column('payload', JSON_TYPE, server_default='{}')
     )
 
 

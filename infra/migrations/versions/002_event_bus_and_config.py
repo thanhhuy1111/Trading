@@ -16,20 +16,23 @@ down_revision: Union[str, None] = '001_initial_schema'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+UUID_TYPE = sa.Uuid().with_variant(postgresql.UUID(as_uuid=True), "postgresql")
+JSON_TYPE = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
+
 
 def upgrade() -> None:
     # 1. Event Outbox Table
     op.create_table(
         'event_outbox',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False, unique=True),
+        sa.Column('id', UUID_TYPE, primary_key=True),
+        sa.Column('event_id', UUID_TYPE, nullable=False, unique=True),
         sa.Column('topic', sa.String(128), nullable=False),
         sa.Column('event_type', sa.String(128), nullable=False),
         sa.Column('schema_version', sa.Integer(), nullable=False, default=1),
         sa.Column('aggregate_type', sa.String(64), nullable=False),
         sa.Column('aggregate_id', sa.String(128), nullable=False),
-        sa.Column('payload', postgresql.JSONB(), nullable=False),
-        sa.Column('metadata', postgresql.JSONB(), nullable=False),
+        sa.Column('payload', JSON_TYPE, nullable=False),
+        sa.Column('metadata', JSON_TYPE, nullable=False),
         sa.Column('status', sa.String(32), nullable=False, default='PENDING'),
         sa.Column('retry_count', sa.Integer(), nullable=False, default=0),
         sa.Column('next_retry_at', sa.DateTime(timezone=True), nullable=True),
@@ -48,8 +51,8 @@ def upgrade() -> None:
     # 2. Event Inbox Table
     op.create_table(
         'event_inbox',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', UUID_TYPE, primary_key=True),
+        sa.Column('event_id', UUID_TYPE, nullable=False),
         sa.Column('consumer_name', sa.String(128), nullable=False),
         sa.Column('event_type', sa.String(128), nullable=False),
         sa.Column('status', sa.String(32), nullable=False, default='PROCESSING'),
@@ -63,12 +66,12 @@ def upgrade() -> None:
     # 3. Configuration Sets Table
     op.create_table(
         'configuration_sets',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('id', UUID_TYPE, primary_key=True),
         sa.Column('namespace', sa.String(64), nullable=False),
         sa.Column('name', sa.String(64), nullable=False),
         sa.Column('version', sa.Integer(), nullable=False),
         sa.Column('status', sa.String(32), nullable=False, default='DRAFT'),
-        sa.Column('values', postgresql.JSONB(), nullable=False),
+        sa.Column('values', JSON_TYPE, nullable=False),
         sa.Column('checksum', sa.String(64), nullable=False),
         sa.Column('created_by', sa.String(64), nullable=False, default='system'),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -84,7 +87,7 @@ def upgrade() -> None:
         sa.Column('worker_type', sa.String(64), nullable=False),
         sa.Column('status', sa.String(32), nullable=False, default='RUNNING'),
         sa.Column('last_heartbeat', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column('metadata', postgresql.JSONB(), server_default='{}')
+        sa.Column('metadata', JSON_TYPE, server_default='{}')
     )
 
 

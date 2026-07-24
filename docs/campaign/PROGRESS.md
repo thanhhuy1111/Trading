@@ -3,9 +3,9 @@
 ## Current state
 
 - Branch: `main`
-- Current phase: Campaign-level final acceptance
-- Last completed task: Phase 15 — Research & Thesis Package
-- Next task: Campaign-level final acceptance and final report
+- Current phase: Campaign complete through Phase 15
+- Last completed task: Campaign-level final acceptance and final report
+- Next task: Tracked post-campaign backlog only
 - Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
   remain sequential and safety-gated.
 

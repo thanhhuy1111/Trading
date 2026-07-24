@@ -23,6 +23,7 @@ def test_alembic_migration_lifecycle():
 
     # Setup Alembic Config pointing to project migrations
     alembic_cfg = Config("infra/migrations/alembic.ini")
+    assert alembic_cfg.get_main_option("sqlalchemy.url") == ""
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
     alembic_cfg.set_main_option("script_location", "infra/migrations")
 
@@ -30,7 +31,8 @@ def test_alembic_migration_lifecycle():
     command.upgrade(alembic_cfg, "001_initial_schema")
     inspector = inspect(engine)
     tables_001 = inspector.get_table_names()
-    assert "trading_status" in tables_001
+    assert "orders" in tables_001
+    assert "incidents" in tables_001
     assert "audit_events" in tables_001
 
     # Step 2: Upgrade to 002
@@ -48,7 +50,8 @@ def test_alembic_migration_lifecycle():
     tables_downgraded = inspector.get_table_names()
     assert "event_outbox" not in tables_downgraded
     assert "event_inbox" not in tables_downgraded
-    assert "trading_status" in tables_downgraded
+    assert "orders" in tables_downgraded
+    assert "audit_events" in tables_downgraded
 
     # Step 4: Re-upgrade to 002
     command.upgrade(alembic_cfg, "002_event_bus_and_config")

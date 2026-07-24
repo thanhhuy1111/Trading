@@ -247,7 +247,27 @@ remains safe-unavailable; no research result or source evidence was fabricated.
 | `.venv/bin/mypy packages/ apps/` | 202 errors in 71 files |
 | `uv lock --check` | passed |
 
-The single pytest failure is still the known missing `infra/migrations/alembic.ini`. Phase 15
-adds documentation, a locked machine-readable protocol, validator/schedule/identity helpers,
-contract tests and a dependency lock. Every uncollected comparative result remains
+At the Phase 15 checkpoint, the single pytest failure was the known missing
+`infra/migrations/alembic.ini`; it was subsequently resolved during campaign final acceptance.
+Phase 15 adds documentation, a locked machine-readable protocol, validator/schedule/identity
+helpers, contract tests and a dependency lock. Every uncollected comparative result remains
 `PENDING_EVIDENCE`.
+
+## Campaign final acceptance
+
+| Check thực tế | Kết quả |
+|---|---|
+| Selected cross-layer acceptance matrix | 207 passed |
+| `.venv/bin/pytest tests/ -q` | 622 passed, 12 skipped, 0 failed |
+| `.venv/bin/ruff check .` | clean |
+| Targeted Phase 15 mypy | clean |
+| `.venv/bin/mypy packages/ apps/` | 202 errors in 71 files |
+| Dashboard Vitest | 3 passed |
+| Dashboard build | passed, one chunk-size warning |
+| Dashboard `npm audit` | 0 vulnerabilities |
+| Alembic 001/002 lifecycle | passed |
+| `uv lock --check` | passed |
+
+The former missing-Alembic-config failure is resolved. Remaining skips require an explicit
+disposable PostgreSQL DSN; they are not counted as passes. Safety flags remain false and all
+uncollected thesis results remain `PENDING_EVIDENCE`.
