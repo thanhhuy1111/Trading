@@ -137,6 +137,24 @@ async def test_fetch_snapshot_all_succeed_is_healthy_with_basis_computed(monkeyp
     assert snapshot.taker_buy_sell_ratio == Decimal("1.1")
     assert snapshot.futures_basis_bps is not None
     assert snapshot.open_interest_change_pct is None  # deliberately deferred, see module docstring
+    assert set(snapshot.metric_lineage) == {
+        "mark_price",
+        "index_price",
+        "funding_rate",
+        "next_funding_time",
+        "open_interest",
+        "long_short_account_ratio",
+        "taker_buy_sell_ratio",
+    }
+    assert snapshot.metric_lineage["funding_rate"].event_time == datetime.fromtimestamp(
+        1893427200000 / 1000.0,
+        tz=timezone.utc,
+    )
+    assert (
+        snapshot.metric_lineage["funding_rate"].available_at
+        >= snapshot.metric_lineage["funding_rate"].event_time
+    )
+    assert "futures_basis_bps" not in snapshot.metric_lineage
     assert snapshot.reason_codes == []
 
 

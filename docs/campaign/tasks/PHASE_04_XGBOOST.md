@@ -3,13 +3,13 @@
 ## Trạng thái
 
 - 4A — Research & Design: **COMPLETE**
-- 4B — Dataset & Labels: **NEXT**
-- 4C — Training & Walk-forward: PENDING
+- 4B — Dataset & Labels: **COMPLETE**
+- 4C — Training & Walk-forward: **NEXT**
 - 4D — Approval & Artifact: PENDING
 - 4E — Runtime Serving & Final Verification: PENDING
 
-Phase 4A chỉ thay đổi tài liệu. Không có production code, model artifact hay trạng thái
-approval nào được tạo trong task này.
+Phase 4B đã triển khai contract/dataset/label point-in-time và field-level derivatives
+lineage. Chưa có trainer, model artifact, approval state hay runtime serving.
 
 ## 1. Kết quả khảo sát
 
@@ -577,26 +577,26 @@ gộp các phase hoặc mở rộng scope âm thầm.
 
 ## 17. Acceptance criteria Phase 4B
 
-- [ ] Pydantic frozen dataset/label/lineage/report contracts có version.
-- [ ] `price_only` và `price_plus_derivatives` build riêng, deterministic và không fallback
+- [x] Pydantic frozen dataset/label/lineage/report contracts có version.
+- [x] `price_only` và `price_plus_derivatives` build riêng, deterministic và không fallback
   qua lại.
-- [ ] Exact registered mapping `BTCUSDT -> BTC/USDT`; wrong symbol/exchange/timeframe và cache
+- [x] Exact registered mapping `BTCUSDT -> BTC/USDT`; wrong symbol/exchange/timeframe và cache
   alias contamination bị reject.
-- [ ] Spot `binance` và derivatives `binance_usdm_futures` được lưu/validate độc lập; correct
+- [x] Spot `binance` và derivatives `binance_usdm_futures` được lưu/validate độc lập; correct
   pair success, swapped/cross-venue pair reject.
-- [ ] Candle source availability deterministic theo close contract; ingestion time chỉ audit;
+- [x] Candle source availability deterministic theo close contract; ingestion time chỉ audit;
   reload ở clocks khác nhau không đổi rows/checksum.
-- [ ] Feature availability dùng `available_at`, không chỉ event time; delayed receipt và
+- [x] Feature availability dùng `available_at`, không chỉ event time; delayed receipt và
   mixed-source timestamps có offline tests.
-- [ ] Derivatives cadence 5m/tolerance/gaps được enforce; history thiếu/legacy không có lineage
+- [x] Derivatives cadence 5m/tolerance/gaps được enforce; history thiếu/legacy không có lineage
   bị reject, không fill/zero.
-- [ ] Basis feature bị loại đến khi có two-source point-in-time lineage.
-- [ ] Mọi feature lineage `<= as_of_time`, mọi target `> as_of_time`; append future inputs
+- [x] Basis feature bị loại đến khi có two-source point-in-time lineage.
+- [x] Mọi feature lineage `<= as_of_time`, mọi target `> as_of_time`; append future inputs
   không đổi row quá khứ.
-- [ ] Label boundary, missing history, invalid input, gap, deterministic checksum và class
+- [x] Label boundary, missing history, invalid input, gap, deterministic checksum và class
   distribution tests pass offline.
-- [ ] Không có trainer, approval service hoặc runtime serving trong 4B.
-- [ ] Targeted Ruff/mypy/pytest đạt; full baseline không xấu đi; progress được cập nhật.
+- [x] Không có trainer, approval service hoặc runtime serving trong 4B.
+- [x] Targeted Ruff/mypy/pytest đạt; full baseline không xấu đi; progress được cập nhật.
 
 ## 18. Acceptance criteria Phase 4C
 

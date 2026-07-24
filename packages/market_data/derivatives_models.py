@@ -15,9 +15,33 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from packages.common.immutable import FrozenMapping
 from packages.market_data.models import BaseMarketDataModel
+
+
+class DerivativesMetricLineage(BaseModel):
+    """Point-in-time availability for one independently fetched derivatives metric."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event_time: datetime
+    available_at: datetime
+    source_timestamps: FrozenMapping[str, datetime] = Field(
+        default_factory=lambda: FrozenMapping({})
+    )
+
+    @model_validator(mode="after")
+    def validate_temporal_lineage(self) -> "DerivativesMetricLineage":
+        timestamps = [self.event_time, self.available_at, *self.source_timestamps.values()]
+        if any(timestamp.tzinfo is None for timestamp in timestamps):
+            raise ValueError("derivatives metric lineage timestamps must be timezone-aware")
+        if self.event_time > self.available_at:
+            raise ValueError("derivatives metric event_time cannot be after available_at")
+        if any(timestamp > self.available_at for timestamp in self.source_timestamps.values()):
+            raise ValueError("derivatives contributing source timestamp cannot be after available_at")
+        return self
 
 
 class DerivativesSnapshot(BaseMarketDataModel):
@@ -39,6 +63,11 @@ class DerivativesSnapshot(BaseMarketDataModel):
     # see packages.market_data.derivatives_quality.compute_futures_basis_bps. None until that
     # computation has actually been performed with a real spot price.
     futures_basis_bps: Optional[Decimal] = None
+    # Legacy snapshots have no field-level lineage and remain readable, but point-in-time ML
+    # datasets must reject them rather than infer an availability time after the fact.
+    metric_lineage: FrozenMapping[str, DerivativesMetricLineage] = Field(
+        default_factory=lambda: FrozenMapping({})
+    )
     reason_codes: List[str] = Field(default_factory=list)
 
 

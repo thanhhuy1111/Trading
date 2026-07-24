@@ -4,9 +4,10 @@
 
 - Branch: `main`
 - Current phase: Phase 4 — XGBoost
-- Last completed task: 4A — Research & Design
-- Next task: 4B — Dataset & Labels
-- Phase 5 is not authorized.
+- Last completed task: 4B — Dataset & Labels
+- Next task: 4C — Training & Walk-forward
+- Full campaign through Phase 15 is authorized by `CODEX_FULL_CAMPAIGN_EXECUTOR.md`; phases
+  remain sequential and safety-gated.
 
 ## Completed before campaign docs
 
@@ -97,11 +98,75 @@ finding HIGH/MEDIUM. Reviewer không sửa file.
 - XGBoost vẫn chưa được khai báo/cài; việc thêm dependency thuộc Phase 4C.
 - Derivatives history không backfill tùy ý và chỉ giữ 30 ngày.
 
+## Phase 4B — Dataset & Labels
+
+Status: **COMPLETE**
+
+### Files changed
+
+- `packages/common/immutable.py`
+- `packages/market_data/derivatives_models.py`
+- `packages/market_data/adapters/binance_futures.py`
+- `packages/features/calculators/derivatives.py`
+- `packages/retraining/xgboost_contracts.py`
+- `packages/retraining/xgboost_dataset.py`
+- `tests/unit/test_binance_futures_adapter.py`
+- `tests/unit/test_xgboost_dataset.py`
+- campaign progress/quality/task docs.
+
+### Delivered
+
+- Deeply immutable, Pydantic-serializable dataset/label/lineage/report contracts with
+  deterministic schema hash, sample IDs and dataset checksum.
+- Two strict modes (`price_only`, `price_plus_derivatives`) with no fallback or imputation.
+- Exact `BTCUSDT -> BTC/USDT`, Binance spot/futures venue and H4 closed-candle validation.
+- Deterministic candle availability (`close_time + 1ms`); ingestion clocks are audit-only and
+  excluded from checksums.
+- Field-level derivatives `event_time`, `available_at` and contributing source timestamps;
+  legacy, delayed, stale, unhealthy, wrong-source and irregular 5m histories fail closed.
+- Metric-specific derivative calculator ordering, so unrelated snapshot timestamps cannot
+  reorder funding/open-interest series.
+- Strict one-bar volatility-band labels, fixed candidate-k distribution report, exact feature
+  schema and nested aggregate/report validation.
+- Basis feature remains excluded because two-source point-in-time lineage is unavailable.
+
+### Independent safety review
+
+Read-only review initially found deep-mutation, nested-lineage, malformed-candle, calculator
+time-axis, rejected-report and aggregate-integrity gaps. All CRITICAL/HIGH/MEDIUM findings
+were addressed with regression tests; the final review reported none remaining. Reviewer did
+not edit files.
+
+### Verification
+
+- Targeted:
+  `.venv/bin/pytest tests/unit/test_binance_futures_adapter.py
+  tests/unit/test_derivatives_history.py tests/unit/test_derivatives_calculators.py
+  tests/unit/test_derivatives_pipeline.py tests/unit/test_xgboost_dataset.py -q`
+  → 55 passed.
+- Full pytest: `.venv/bin/pytest tests/ -q`
+  → 512 passed, 12 skipped, 1 failed.
+- Full failure remains
+  `tests/integration/test_db_migration.py::test_alembic_migration_lifecycle`
+  because `infra/migrations/alembic.ini` is absent; this is the known baseline issue.
+- Ruff: `.venv/bin/ruff check .` → clean.
+- Mypy: `.venv/bin/mypy packages/ apps/` → 180 errors in 67 files, unchanged baseline.
+- `git diff --check` → clean.
+- Runtime safety values remain:
+  `LIVE_TRADING_ENABLED=False`,
+  `PRIVATE_EXCHANGE_API_ENABLED=False`,
+  `FEATURE_FLAGS_LIVE_TRADING=False`.
+
+### Scope confirmation
+
+No trainer, model artifact, approval service, runtime serving, private exchange API, live
+trading flag, order path or fabricated market/research result was added.
+
 ### Next task
 
-Thực hiện duy nhất Phase 4B — point-in-time Dataset & Labels theo
-`docs/campaign/tasks/PHASE_04_XGBOOST.md`. Không triển khai trainer, approval gate hay runtime
-serving trong 4B.
+Thực hiện Phase 4C — Training & Walk-forward theo
+`docs/campaign/tasks/PHASE_04_XGBOOST.md`. Không triển khai approval registry hoặc runtime
+serving trong 4C.
 
 ### Commit and push
 

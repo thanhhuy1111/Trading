@@ -62,3 +62,15 @@ Mỗi task phải review diff để xác nhận không thay đổi các mặc đ
 exchange API và không thêm real-order path.
 
 Runtime settings được đọc trong Phase 4A cũng trả cả ba giá trị là `False`.
+
+## Phase 4B verification
+
+| Check thực tế | Kết quả |
+|---|---|
+| Targeted dataset/derivatives/adapter tests | 55 passed |
+| `.venv/bin/pytest tests/ -q` | 512 passed, 12 skipped, 1 failed |
+| `.venv/bin/ruff check .` | clean |
+| `.venv/bin/mypy packages/ apps/` | 180 errors in 67 files |
+
+Full-suite failure vẫn là missing `infra/migrations/alembic.ini`; không có regression mới.
+Ba runtime safety settings vẫn `False`.

@@ -26,7 +26,14 @@ def _valid_series(snapshots: List[DerivativesSnapshot], field: str) -> List[Tupl
     None -- a snapshot missing this one metric (e.g. a PARTIAL fetch) doesn't disqualify the
     other real values around it."""
     pairs: List[Tuple[datetime, Decimal]] = [
-        (s.exchange_timestamp, getattr(s, field))
+        (
+            (
+                s.metric_lineage[field].event_time
+                if field in s.metric_lineage
+                else s.exchange_timestamp
+            ),
+            getattr(s, field),
+        )
         for s in snapshots
         if getattr(s, field) is not None
     ]

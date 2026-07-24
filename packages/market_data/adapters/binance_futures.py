@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
+from packages.common.immutable import FrozenMapping
 from packages.common.logger import logger
-from packages.market_data.derivatives_models import DerivativesSnapshot
+from packages.market_data.derivatives_models import DerivativesMetricLineage, DerivativesSnapshot
 from packages.market_data.derivatives_quality import compute_data_quality_status, compute_futures_basis_bps
 from packages.market_data.symbol_registry import symbol_registry
 
@@ -149,10 +150,35 @@ class BinancePublicFuturesDataProvider:
         status, reason_codes = compute_data_quality_status(fetch_succeeded, freshest_as_of, now)
 
         mark_price = mark_index["mark_price"] if mark_index else None
+        metric_lineage: Dict[str, DerivativesMetricLineage] = {}
+
+        def _record_lineage(metric_names: tuple[str, ...], payload: Optional[Dict[str, Any]], source: str) -> None:
+            if payload is None:
+                return
+            event_time = payload["as_of"]
+            available_at = max(now, event_time)
+            lineage = DerivativesMetricLineage(
+                event_time=event_time,
+                available_at=available_at,
+                source_timestamps=FrozenMapping({source: event_time}),
+            )
+            for metric_name in metric_names:
+                metric_lineage[metric_name] = lineage
+
+        _record_lineage(
+            ("mark_price", "index_price", "funding_rate", "next_funding_time"),
+            mark_index,
+            "premium_index",
+        )
+        _record_lineage(("open_interest",), open_interest, "open_interest")
+        _record_lineage(("long_short_account_ratio",), long_short, "global_long_short_ratio")
+        _record_lineage(("taker_buy_sell_ratio",), taker_ratio, "taker_buy_sell_ratio")
+
         return DerivativesSnapshot(
             exchange=self.exchange_id,
             symbol=symbol,
             exchange_timestamp=freshest_as_of or now,
+            received_timestamp=now,
             source="binance_public",
             data_quality_status=status,
             mark_price=mark_price,
@@ -164,5 +190,6 @@ class BinancePublicFuturesDataProvider:
             long_short_account_ratio=long_short["long_short_account_ratio"] if long_short else None,
             taker_buy_sell_ratio=taker_ratio["taker_buy_sell_ratio"] if taker_ratio else None,
             futures_basis_bps=compute_futures_basis_bps(mark_price, spot_reference_price),
+            metric_lineage=FrozenMapping(metric_lineage),
             reason_codes=reason_codes,
         )
